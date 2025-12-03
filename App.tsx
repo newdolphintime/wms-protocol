@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { 
@@ -40,7 +39,10 @@ import {
   ArrowDownCircle,
   Target,
   Edit2,
-  Save
+  Save,
+  FileText,
+  Repeat,
+  Info
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, PieChart, Pie, AreaChart, Area } from 'recharts';
 import { MOCK_FUNDS, MOCK_PORTFOLIO, generateChartData, generateFundHistory, getLiquidityTier, getSettlementDays } from './services/dataService';
@@ -1478,7 +1480,7 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
                             <option key={acc.id} value={acc.id}>{acc.name}</option>
                         ))}
                     </select>
-                 </div>
+                </div>
 
                  {/* View Mode Toggle */}
                  <div className="flex bg-gray-100 rounded-md p-1">
@@ -1571,6 +1573,46 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, onUpdateCash: (accou
     // Cash editing state
     const [editingCashId, setEditingCashId] = useState<string | null>(null);
     const [editCashValue, setEditCashValue] = useState<string>('');
+
+    // Plan input state
+    const [planCategory, setPlanCategory] = useState<'GENERAL' | 'REDEMPTION' | 'DIVIDEND' | 'INSURANCE'>('GENERAL');
+    const [newFlowDate, setNewFlowDate] = useState('');
+    const [newFlowAmount, setNewFlowAmount] = useState('');
+    const [newFlowDesc, setNewFlowDesc] = useState('');
+    const [newFlowType, setNewFlowType] = useState<'INFLOW' | 'OUTFLOW'>('INFLOW');
+    const [selectedProductId, setSelectedProductId] = useState('');
+
+    // Derived holdings for current account selection (for dropdown)
+    const currentAccountHoldings = useMemo(() => {
+        if (selectedAccountId === 'ALL') return [];
+        const account = portfolio.accounts.find(a => a.id === selectedAccountId);
+        if (!account) return [];
+        return account.holdings.map(h => {
+            const f = MOCK_FUNDS.find(fund => fund.id === h.fundId);
+            return { id: h.fundId, name: f?.name || h.fundId };
+        });
+    }, [selectedAccountId, portfolio]);
+
+    // Update description/type when category or product changes
+    useEffect(() => {
+        if (planCategory === 'GENERAL') {
+             // Keep user input or reset? Let's keep input but default to inflow
+             setNewFlowType('INFLOW');
+             setNewFlowDesc('');
+        } else if (planCategory === 'REDEMPTION') {
+             setNewFlowType('INFLOW');
+             const prod = currentAccountHoldings.find(p => p.id === selectedProductId);
+             setNewFlowDesc(prod ? `[赎回] ${prod.name}` : '');
+        } else if (planCategory === 'DIVIDEND') {
+             setNewFlowType('INFLOW');
+             const prod = currentAccountHoldings.find(p => p.id === selectedProductId);
+             setNewFlowDesc(prod ? `[分红] ${prod.name}` : '');
+        } else if (planCategory === 'INSURANCE') {
+             setNewFlowType('OUTFLOW');
+             setNewFlowDesc('[保费] ');
+        }
+    }, [planCategory, selectedProductId, currentAccountHoldings]);
+
 
     // 1. Calculate holdings liquidity based on account filter
     const liquidityData = useMemo(() => {
@@ -1710,11 +1752,6 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, onUpdateCash: (accou
         return projectionData.find(d => d.date === targetDate);
     }, [targetDate, projectionData]);
 
-    // Simple form state
-    const [newFlowDate, setNewFlowDate] = useState('');
-    const [newFlowAmount, setNewFlowAmount] = useState('');
-    const [newFlowDesc, setNewFlowDesc] = useState('');
-    const [newFlowType, setNewFlowType] = useState<'INFLOW' | 'OUTFLOW'>('INFLOW');
 
     const handleCashEdit = (acc: Account) => {
         setEditingCashId(acc.id);
@@ -1740,7 +1777,11 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, onUpdateCash: (accou
                 <div className="w-64">
                     <select 
                         value={selectedAccountId}
-                        onChange={(e) => setSelectedAccountId(e.target.value)}
+                        onChange={(e) => {
+                            setSelectedAccountId(e.target.value);
+                            setPlanCategory('GENERAL'); // Reset category on account switch to avoid mismatched products
+                            setSelectedProductId('');
+                        }}
                         className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                     >
                         <option value="ALL">全部账户资产</option>
@@ -1866,38 +1907,112 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, onUpdateCash: (accou
                         <Wallet className="w-5 h-5 text-indigo-600" />
                         资金计划管理
                     </h3>
+                    
+                    {/* Category Selector */}
+                    <div className="flex mb-4 bg-gray-100 p-1 rounded-lg">
+                        <button 
+                            onClick={() => setPlanCategory('GENERAL')}
+                            className={`flex-1 text-xs py-1.5 font-medium rounded-md transition-all ${planCategory === 'GENERAL' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}
+                        >
+                            通用收支
+                        </button>
+                        {selectedAccountId !== 'ALL' && (
+                            <>
+                                <button 
+                                    onClick={() => setPlanCategory('REDEMPTION')}
+                                    className={`flex-1 text-xs py-1.5 font-medium rounded-md transition-all ${planCategory === 'REDEMPTION' ? 'bg-white shadow text-red-600' : 'text-gray-500'}`}
+                                >
+                                    基金赎回
+                                </button>
+                                <button 
+                                    onClick={() => setPlanCategory('DIVIDEND')}
+                                    className={`flex-1 text-xs py-1.5 font-medium rounded-md transition-all ${planCategory === 'DIVIDEND' ? 'bg-white shadow text-green-600' : 'text-gray-500'}`}
+                                >
+                                    基金分红
+                                </button>
+                                <button 
+                                    onClick={() => setPlanCategory('INSURANCE')}
+                                    className={`flex-1 text-xs py-1.5 font-medium rounded-md transition-all ${planCategory === 'INSURANCE' ? 'bg-white shadow text-orange-600' : 'text-gray-500'}`}
+                                >
+                                    保单缴费
+                                </button>
+                            </>
+                        )}
+                    </div>
+
                     <div className="space-y-4">
+                        {/* Dynamic Product Input */}
+                        {(planCategory === 'REDEMPTION' || planCategory === 'DIVIDEND') && (
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">选择持仓产品</label>
+                                <select 
+                                    className="w-full text-sm border-gray-300 rounded-md"
+                                    value={selectedProductId}
+                                    onChange={(e) => setSelectedProductId(e.target.value)}
+                                >
+                                    <option value="">请选择基金...</option>
+                                    {currentAccountHoldings.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">日期</label>
                             <input type="date" value={newFlowDate} onChange={e => setNewFlowDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
                         </div>
+                        
                         <div className="flex gap-2">
-                            <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-700 mb-1">类型</label>
-                                <select value={newFlowType} onChange={(e: any) => setNewFlowType(e.target.value)} className="w-full text-sm border-gray-300 rounded-md">
-                                    <option value="INFLOW">流入 (+)</option>
-                                    <option value="OUTFLOW">流出 (-)</option>
-                                </select>
-                            </div>
+                            {planCategory === 'GENERAL' && (
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">类型</label>
+                                    <select value={newFlowType} onChange={(e: any) => setNewFlowType(e.target.value)} className="w-full text-sm border-gray-300 rounded-md">
+                                        <option value="INFLOW">流入 (+)</option>
+                                        <option value="OUTFLOW">流出 (-)</option>
+                                    </select>
+                                </div>
+                            )}
                             <div className="flex-1">
                                 <label className="block text-xs font-medium text-gray-700 mb-1">金额 (元)</label>
                                 <input type="number" value={newFlowAmount} onChange={e => setNewFlowAmount(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
                             </div>
                         </div>
+
                         <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">说明</label>
-                            <input type="text" value={newFlowDesc} onChange={e => setNewFlowDesc(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder="例如: 支付购房首付"/>
+                            <input 
+                                type="text" 
+                                value={newFlowDesc} 
+                                onChange={e => setNewFlowDesc(e.target.value)} 
+                                className="w-full text-sm border-gray-300 rounded-md" 
+                                placeholder={planCategory === 'INSURANCE' ? '请输入保单名称...' : '例如: 支付购房首付'}
+                            />
                         </div>
                         <button 
                             onClick={() => {
                                 if(newFlowDate && newFlowAmount) {
                                     addCashFlow({ date: newFlowDate, amount: Number(newFlowAmount), description: newFlowDesc || '未命名款项', type: newFlowType });
-                                    setNewFlowAmount(''); setNewFlowDesc('');
+                                    setNewFlowAmount(''); 
+                                    if (planCategory === 'GENERAL') setNewFlowDesc('');
+                                    // Keep product selection/desc logic for quick multi-entry or reset? Resetting is safer.
+                                    if (planCategory !== 'GENERAL') {
+                                        setNewFlowDesc('');
+                                        setSelectedProductId('');
+                                    }
                                 }
                             }}
-                            className="w-full py-2 bg-indigo-50 text-indigo-700 font-medium rounded-md hover:bg-indigo-100 transition-colors text-sm"
+                            className={`w-full py-2 text-white font-medium rounded-md transition-colors text-sm shadow-sm ${
+                                planCategory === 'REDEMPTION' ? 'bg-red-600 hover:bg-red-700' :
+                                planCategory === 'DIVIDEND' ? 'bg-green-600 hover:bg-green-700' :
+                                planCategory === 'INSURANCE' ? 'bg-orange-500 hover:bg-orange-600' :
+                                'bg-indigo-600 hover:bg-indigo-700'
+                            }`}
                         >
-                            添加计划
+                            {planCategory === 'REDEMPTION' ? '添加赎回计划' :
+                             planCategory === 'DIVIDEND' ? '添加分红计划' :
+                             planCategory === 'INSURANCE' ? '添加缴费计划' :
+                             '添加收支计划'}
                         </button>
                     </div>
 
@@ -1988,6 +2103,17 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, onUpdateCash: (accou
                                 />
                             </AreaChart>
                         </ResponsiveContainer>
+                    </div>
+
+                     <div className="mt-4 bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1">
+                        <div className="flex items-start gap-2">
+                            <div className="w-3 h-3 mt-0.5 rounded-full bg-indigo-500/20 border border-indigo-500 shrink-0"></div>
+                            <p><span className="font-semibold text-indigo-700">预计可用余额</span>: 考虑了资产变现进度以及所有录入的资金流入/流出计划后的最终可用资金。</p>
+                        </div>
+                        <div className="flex items-start gap-2">
+                            <div className="w-3 h-3 mt-0.5 border-t-2 border-green-500 border-dashed shrink-0"></div>
+                            <p><span className="font-semibold text-green-700">资产累计变现</span>: 仅计算持仓资产根据 T+N 规则逐步到账的累积金额，不包含额外的收支计划。</p>
+                        </div>
                     </div>
                 </div>
             </div>
