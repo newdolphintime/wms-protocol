@@ -1,0 +1,5 @@
+{
+  "name": "FundInsight Pro",
+  "description": "A professional fund research dashboard allowing users to browse investment products, compare historical performance metrics on interactive charts, and receive AI-powered investment analysis using Gemini.",
+  "requestFramePermissions": []
+}
