@@ -47,6 +47,12 @@ export enum AccountType {
   FAMILY_TRUST = '家族信托账户',
 }
 
+export interface RedemptionRule {
+  ruleType: 'DAILY' | 'MONTHLY';
+  openDay?: number; // 1-31 for MONTHLY
+  settlementDays: number; // T+N
+}
+
 export interface Holding {
   // If internal fund
   fundId?: string;
@@ -60,6 +66,9 @@ export interface Holding {
 
   shares: number;   // Number of shares/units held
   avgCost: number;  // Average cost per share
+
+  // Liquidity Config
+  redemptionRule?: RedemptionRule;
 }
 
 export interface Account {

@@ -1,5 +1,5 @@
 
-import { Fund, FundType, ChartDataPoint, PatchRule, ClientPortfolio, AccountType, LiquidityTier } from '../types';
+import { Fund, FundType, ChartDataPoint, PatchRule, ClientPortfolio, AccountType, LiquidityTier, Holding, RedemptionRule } from '../types';
 
 // Helper to get a date string for X days ago
 const getDaysAgo = (days: number) => {
@@ -214,6 +214,44 @@ export const getSettlementDays = (tier: LiquidityTier): number => {
     }
 };
 
+export const calculateAvailabilityDate = (fromDate: Date, holding: Holding, fundType?: FundType): Date => {
+    const availableDate = new Date(fromDate);
+    
+    // 1. Custom Rule Priority
+    if (holding.redemptionRule) {
+        const { ruleType, openDay, settlementDays } = holding.redemptionRule;
+        
+        if (ruleType === 'MONTHLY' && openDay) {
+            // Check if today is passed the open day
+            let targetDate = new Date(fromDate);
+            // If today's day is >= openDay, we might have missed it? 
+            // Usually if today is 15th and open day is 15th, we can redeem today.
+            if (targetDate.getDate() > openDay) {
+                // Move to next month
+                targetDate.setMonth(targetDate.getMonth() + 1);
+            }
+            // Set to open day
+            targetDate.setDate(openDay);
+            
+            // Add settlement days
+            targetDate.setDate(targetDate.getDate() + settlementDays);
+            return targetDate;
+        } else {
+             // Daily: Just add settlement
+             availableDate.setDate(availableDate.getDate() + settlementDays);
+             return availableDate;
+        }
+    }
+
+    // 2. Default Tier Logic
+    const type = holding.isExternal ? (holding.externalType || FundType.STRATEGY) : fundType;
+    const tier = type ? getLiquidityTier(type) : LiquidityTier.MEDIUM;
+    const days = getSettlementDays(tier);
+    
+    availableDate.setDate(availableDate.getDate() + days);
+    return availableDate;
+};
+
 // Helper to check if a date is within a patch rule range
 const findActiveRule = (fundId: string, dateStr: string, rules: PatchRule[]): PatchRule | undefined => {
   return rules.find(rule => 
@@ -410,11 +448,6 @@ export const generateFundHistory = (
               navActual = navVal;
               // On the exact inception day, we give this value to patched as well 
               // IF there is a patch rule connecting to it immediately before.
-              // But for simple backwards visualization, having it just be actual is usually fine,
-              // EXCEPT we need to connect the lines.
-              // To connect line, the "Inception Day" point needs to be the end of the patched line AND start of actual line.
-              // Ideally, checking if yesterday (i+1) was patched would be better, but we are in a loop.
-              // Simplified: If it is Inception Day, show it on patched line too so it connects.
               if (isExactInception) {
                   navPatched = navVal;
               }
