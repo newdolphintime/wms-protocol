@@ -48,7 +48,16 @@ export enum AccountType {
 }
 
 export interface Holding {
-  fundId: string;
+  // If internal fund
+  fundId?: string;
+  
+  // If external asset
+  isExternal?: boolean;
+  externalName?: string;
+  externalType?: FundType;
+  externalNav?: number;
+  externalNavDate?: string;
+
   shares: number;   // Number of shares/units held
   avgCost: number;  // Average cost per share
 }

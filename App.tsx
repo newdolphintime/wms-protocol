@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { 
@@ -48,7 +49,7 @@ import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis
 import { MOCK_FUNDS, MOCK_PORTFOLIO, generateChartData, generateFundHistory, getLiquidityTier, getSettlementDays } from './services/dataService';
 import { analyzeFunds } from './services/geminiService';
 import ComparisonChart from './components/ComparisonChart';
-import { Fund, AnalysisState, FundType, PatchRule, Account, AccountType, LiquidityTier, CashFlow, ClientPortfolio } from './types';
+import { Fund, AnalysisState, FundType, PatchRule, Account, AccountType, LiquidityTier, CashFlow, ClientPortfolio, Holding } from './types';
 import ReactMarkdown from 'react-markdown';
 
 // --- Shared Components ---
@@ -256,7 +257,117 @@ const SingleFundPerformanceCard: React.FC<{
   );
 };
 
-// --- Modal Component ---
+// --- Modal Components ---
+
+const AddAssetModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    accounts: Account[];
+    initialAccountId?: string;
+    onAdd: (accountId: string, holding: Holding) => void;
+}> = ({ isOpen, onClose, accounts, initialAccountId, onAdd }) => {
+    const [accountId, setAccountId] = useState(accounts[0]?.id || '');
+    const [name, setName] = useState('');
+    const [type, setType] = useState<FundType>(FundType.BROAD_MARKET);
+    const [shares, setShares] = useState('');
+    const [nav, setNav] = useState('');
+    const [navDate, setNavDate] = useState(new Date().toISOString().split('T')[0]);
+    const [avgCost, setAvgCost] = useState('');
+
+    useEffect(() => {
+        if (isOpen && initialAccountId) {
+            setAccountId(initialAccountId);
+        } else if (isOpen && !initialAccountId && accounts.length > 0) {
+            setAccountId(accounts[0].id);
+        }
+    }, [isOpen, initialAccountId, accounts]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = () => {
+        if (accountId && name && shares && nav) {
+            onAdd(accountId, {
+                isExternal: true,
+                externalName: name,
+                externalType: type,
+                externalNav: Number(nav),
+                externalNavDate: navDate,
+                shares: Number(shares),
+                avgCost: Number(avgCost) || Number(nav) // Default cost to current NAV if not provided
+            });
+            onClose();
+            // Reset fields
+            setName('');
+            setShares('');
+            setNav('');
+            setAvgCost('');
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-bold text-gray-900">录入外部资产</h3>
+                    <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+                </div>
+                
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">所属账户</label>
+                        <select 
+                            value={accountId}
+                            onChange={(e) => setAccountId(e.target.value)}
+                            className="w-full text-sm border-gray-300 rounded-md bg-gray-50"
+                        >
+                            {accounts.map(acc => (
+                                <option key={acc.id} value={acc.id}>{acc.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">产品名称</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder="例如: 某某私募一期"/>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">产品类型</label>
+                        <select value={type} onChange={e => setType(e.target.value as FundType)} className="w-full text-sm border-gray-300 rounded-md">
+                            {Object.values(FundType).map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">持有份额</label>
+                            <input type="number" value={shares} onChange={e => setShares(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">持仓成本(元)</label>
+                            <input type="number" value={avgCost} onChange={e => setAvgCost(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder="选填"/>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">最新净值</label>
+                            <input type="number" value={nav} onChange={e => setNav(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">净值日期</label>
+                            <input type="date" value={navDate} onChange={e => setNavDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={handleSubmit}
+                        disabled={!name || !shares || !nav}
+                        className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
+                    >
+                        确认录入
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const PatchConfigModal: React.FC<{
   isOpen: boolean;
@@ -702,249 +813,250 @@ const FundListPage: React.FC = () => {
   );
 };
 
+// ... ComparisonPage, FundDetailPage are assumed unchanged ...
 const ComparisonPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: PatchRule) => void, onRemovePatchRule: (id: string) => void }> = ({ patchRules, onAddPatchRule, onRemovePatchRule }) => {
-  const location = useLocation();
-  const [selectedRange, setSelectedRange] = useState<number | string>(30); // Default 1 month
-  const [analysis, setAnalysis] = useState<AnalysisState>({ loading: false, content: null, error: null });
-  const [isPatchModalOpen, setIsPatchModalOpen] = useState(false);
-
-  const selectedFundIds = (location.state as { selectedFundIds: string[] })?.selectedFundIds || [];
-  const selectedFunds = MOCK_FUNDS.filter(f => selectedFundIds.includes(f.id));
-
-  // Calculate dynamic days for variable ranges
-  const daysToLoad = useMemo(() => {
-    if (typeof selectedRange === 'number') return selectedRange;
-    
-    if (selectedRange === 'SINCE_INCEPTION') {
-         // Find earliest inception date among selected funds
-         if (selectedFunds.length === 0) return 365;
-         const earliest = selectedFunds.reduce((min, p) => p.inceptionDate < min ? p.inceptionDate : min, selectedFunds[0].inceptionDate);
-         const start = new Date(earliest);
-         const now = new Date();
-         const diffTime = Math.abs(now.getTime() - start.getTime());
-         return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    // ... Existing implementation ...
+    const location = useLocation();
+    const [selectedRange, setSelectedRange] = useState<number | string>(30); // Default 1 month
+    const [analysis, setAnalysis] = useState<AnalysisState>({ loading: false, content: null, error: null });
+    const [isPatchModalOpen, setIsPatchModalOpen] = useState(false);
+  
+    const selectedFundIds = (location.state as { selectedFundIds: string[] })?.selectedFundIds || [];
+    const selectedFunds = MOCK_FUNDS.filter(f => selectedFundIds.includes(f.id));
+  
+    // Calculate dynamic days for variable ranges
+    const daysToLoad = useMemo(() => {
+      if (typeof selectedRange === 'number') return selectedRange;
+      
+      if (selectedRange === 'SINCE_INCEPTION') {
+           // Find earliest inception date among selected funds
+           if (selectedFunds.length === 0) return 365;
+           const earliest = selectedFunds.reduce((min, p) => p.inceptionDate < min ? p.inceptionDate : min, selectedFunds[0].inceptionDate);
+           const start = new Date(earliest);
+           const now = new Date();
+           const diffTime = Math.abs(now.getTime() - start.getTime());
+           return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      }
+      
+      // YTD
+      const now = new Date();
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      const diffTime = Math.abs(now.getTime() - startOfYear.getTime());
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    }, [selectedRange, selectedFunds]);
+  
+    const { chartData, gaps } = useMemo(() => 
+      generateChartData(selectedFunds, daysToLoad, patchRules, MOCK_FUNDS), 
+    [selectedFunds, daysToLoad, patchRules]);
+  
+    // Calculate Chart Start Date for Visualization
+    const chartStartDate = useMemo(() => {
+       const now = new Date();
+       now.setDate(now.getDate() - daysToLoad);
+       return now.toISOString().split('T')[0];
+    }, [daysToLoad]);
+  
+    const handleAnalyze = async () => {
+      setAnalysis({ loading: true, content: null, error: null });
+      const result = await analyzeFunds(selectedFunds);
+      setAnalysis({ loading: false, content: result, error: null });
+    };
+  
+    if (selectedFunds.length === 0) {
+      return (
+        <div className="text-center py-20">
+          <h2 className="text-xl font-semibold text-gray-900">未选择基金</h2>
+          <p className="mt-2 text-gray-500">请先从列表中选择需要对比的基金。</p>
+          <Link to="/" className="mt-4 inline-block text-indigo-600 hover:text-indigo-500 font-medium">
+            返回列表
+          </Link>
+        </div>
+      );
     }
-    
-    // YTD
-    const now = new Date();
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-    const diffTime = Math.abs(now.getTime() - startOfYear.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-  }, [selectedRange, selectedFunds]);
-
-  const { chartData, gaps } = useMemo(() => 
-    generateChartData(selectedFunds, daysToLoad, patchRules, MOCK_FUNDS), 
-  [selectedFunds, daysToLoad, patchRules]);
-
-  // Calculate Chart Start Date for Visualization
-  const chartStartDate = useMemo(() => {
-     const now = new Date();
-     now.setDate(now.getDate() - daysToLoad);
-     return now.toISOString().split('T')[0];
-  }, [daysToLoad]);
-
-  const handleAnalyze = async () => {
-    setAnalysis({ loading: true, content: null, error: null });
-    const result = await analyzeFunds(selectedFunds);
-    setAnalysis({ loading: false, content: result, error: null });
-  };
-
-  if (selectedFunds.length === 0) {
+  
     return (
-      <div className="text-center py-20">
-        <h2 className="text-xl font-semibold text-gray-900">未选择基金</h2>
-        <p className="mt-2 text-gray-500">请先从列表中选择需要对比的基金。</p>
-        <Link to="/" className="mt-4 inline-block text-indigo-600 hover:text-indigo-500 font-medium">
-          返回列表
-        </Link>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">业绩对比分析</h1>
+            <p className="mt-1 text-sm text-gray-500">
+               对比 {selectedFunds.length} 只基金的历史业绩走势
+            </p>
+          </div>
+          <div className="flex gap-3">
+              {gaps.length > 0 && (
+                  <button
+                      onClick={() => setIsPatchModalOpen(true)}
+                      className="inline-flex items-center px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-sm font-medium hover:bg-amber-100 transition-colors animate-pulse"
+                  >
+                      <AlertTriangle className="w-4 h-4 mr-2" />
+                      发现数据缺失 ({gaps.length}) - 点击补齐
+                  </button>
+              )}
+              {!gaps.length && (
+                   <button
+                      onClick={() => setIsPatchModalOpen(true)}
+                      className="inline-flex items-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+                  >
+                      <Wand2 className="w-4 h-4 mr-2" />
+                      配置净值补齐
+                  </button>
+              )}
+              <button
+                  onClick={handleAnalyze}
+                  disabled={analysis.loading}
+                  className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-md text-sm font-medium shadow-md hover:from-indigo-700 hover:to-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all"
+              >
+                  {analysis.loading ? (
+                  <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      AI 分析中...
+                  </>
+                  ) : (
+                  <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      生成 AI 分析报告
+                  </>
+                  )}
+              </button>
+          </div>
+        </div>
+  
+        {/* Chart Section */}
+        <ComparisonChart 
+          data={chartData} 
+          funds={selectedFunds} 
+          patchRules={patchRules}
+          allFunds={MOCK_FUNDS}
+          periodSelector={
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                  {TIME_RANGES.map((range) => (
+                      <button
+                          key={range.label}
+                          onClick={() => setSelectedRange(range.value)}
+                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                              selectedRange === range.value 
+                              ? 'bg-white text-indigo-600 shadow-sm' 
+                              : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                      >
+                          {range.label}
+                      </button>
+                  ))}
+              </div>
+          }
+        />
+  
+        {/* Calculation Formula Explanation */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-start gap-4">
+               <div className="bg-indigo-50 p-3 rounded-lg">
+                   <Calculator className="w-6 h-6 text-indigo-600" />
+               </div>
+               <div>
+                   <h3 className="text-lg font-semibold text-gray-900 mb-2">归一化净值计算说明</h3>
+                   <p className="text-gray-600 text-sm mb-4">
+                       为了在同一坐标系下直观对比不同基金的业绩走势，我们将所有基金在起始日期的净值统一标准化为 <span className="font-mono font-bold text-gray-800">100</span>。
+                       后续日期的数值反映了相对于起始日的累计涨跌幅。
+                   </p>
+                   <div className="bg-gray-50 rounded-lg p-4 font-mono text-xs sm:text-sm text-gray-700 border border-gray-200">
+                       <div className="mb-2">
+                           <span className="font-semibold text-indigo-600">公式：</span>
+                           归一化净值(t) = ( 基金单位净值(t) / 基金单位净值(起始日) ) × 100
+                       </div>
+                       <div className="flex flex-col sm:flex-row gap-4 mt-3 pt-3 border-t border-gray-200">
+                           <div>
+                               <span className="text-gray-500 block mb-1">示例：基金A</span>
+                               起始净值: 2.000 → <span className="font-bold">100.00</span><br/>
+                               当前净值: 2.200 → <span className="font-bold">110.00</span> (+10%)
+                           </div>
+                           <div>
+                               <span className="text-gray-500 block mb-1">示例：基金B</span>
+                               起始净值: 5.000 → <span className="font-bold">100.00</span><br/>
+                               当前净值: 4.500 → <span className="font-bold">90.00</span> (-10%)
+                           </div>
+                       </div>
+                   </div>
+               </div>
+          </div>
+        </div>
+        
+        {/* Selected Funds Table */}
+        <div className="bg-white shadow-sm border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+             <h3 className="text-sm font-semibold text-gray-900">对比基金详情</h3>
+          </div>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">基金名称</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">成立日期</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">最新净值</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">累计收益(YTD)</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">数据状态</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {selectedFunds.map((fund) => {
+                  const isGap = gaps.find(g => g.fundId === fund.id);
+                  const isPatched = patchRules.some(r => r.targetFundId === fund.id);
+                  return (
+                      <tr key={fund.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{fund.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{fund.inceptionDate}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fund.nav.toFixed(4)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <span className={fund.ytdReturn >= 0 ? 'text-red-600' : 'text-green-600'}>
+                          {fund.ytdReturn >= 0 ? '+' : ''}{fund.ytdReturn}%
+                          </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {isGap && !isPatched ? (
+                               <Badge color="red">缺失 (需补齐)</Badge>
+                          ) : isPatched ? (
+                              <Badge color="amber">已配置补齐</Badge>
+                          ) : (
+                              <Badge color="green">完整</Badge>
+                          )}
+                      </td>
+                      </tr>
+                  );
+              })}
+            </tbody>
+          </table>
+        </div>
+  
+        {/* AI Analysis Result */}
+        {analysis.content && (
+          <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-xl p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-lg font-bold text-gray-900">AI 智能分析报告</h3>
+            </div>
+            <div className="prose prose-sm prose-indigo max-w-none text-gray-700">
+              <ReactMarkdown>{analysis.content}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+  
+        <PatchConfigModal 
+          isOpen={isPatchModalOpen}
+          onClose={() => setIsPatchModalOpen(false)}
+          patchRules={patchRules}
+          onAddRule={onAddPatchRule}
+          onRemoveRule={onRemovePatchRule}
+          allFunds={MOCK_FUNDS}
+          comparisonStartDate={chartStartDate}
+        />
       </div>
     );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">业绩对比分析</h1>
-          <p className="mt-1 text-sm text-gray-500">
-             对比 {selectedFunds.length} 只基金的历史业绩走势
-          </p>
-        </div>
-        <div className="flex gap-3">
-            {gaps.length > 0 && (
-                <button
-                    onClick={() => setIsPatchModalOpen(true)}
-                    className="inline-flex items-center px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-sm font-medium hover:bg-amber-100 transition-colors animate-pulse"
-                >
-                    <AlertTriangle className="w-4 h-4 mr-2" />
-                    发现数据缺失 ({gaps.length}) - 点击补齐
-                </button>
-            )}
-            {!gaps.length && (
-                 <button
-                    onClick={() => setIsPatchModalOpen(true)}
-                    className="inline-flex items-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
-                >
-                    <Wand2 className="w-4 h-4 mr-2" />
-                    配置净值补齐
-                </button>
-            )}
-            <button
-                onClick={handleAnalyze}
-                disabled={analysis.loading}
-                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-md text-sm font-medium shadow-md hover:from-indigo-700 hover:to-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all"
-            >
-                {analysis.loading ? (
-                <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    AI 分析中...
-                </>
-                ) : (
-                <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    生成 AI 分析报告
-                </>
-                )}
-            </button>
-        </div>
-      </div>
-
-      {/* Chart Section */}
-      <ComparisonChart 
-        data={chartData} 
-        funds={selectedFunds} 
-        patchRules={patchRules}
-        allFunds={MOCK_FUNDS}
-        periodSelector={
-            <div className="flex bg-gray-100 rounded-lg p-1">
-                {TIME_RANGES.map((range) => (
-                    <button
-                        key={range.label}
-                        onClick={() => setSelectedRange(range.value)}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                            selectedRange === range.value 
-                            ? 'bg-white text-indigo-600 shadow-sm' 
-                            : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                    >
-                        {range.label}
-                    </button>
-                ))}
-            </div>
-        }
-      />
-
-      {/* Calculation Formula Explanation */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-start gap-4">
-             <div className="bg-indigo-50 p-3 rounded-lg">
-                 <Calculator className="w-6 h-6 text-indigo-600" />
-             </div>
-             <div>
-                 <h3 className="text-lg font-semibold text-gray-900 mb-2">归一化净值计算说明</h3>
-                 <p className="text-gray-600 text-sm mb-4">
-                     为了在同一坐标系下直观对比不同基金的业绩走势，我们将所有基金在起始日期的净值统一标准化为 <span className="font-mono font-bold text-gray-800">100</span>。
-                     后续日期的数值反映了相对于起始日的累计涨跌幅。
-                 </p>
-                 <div className="bg-gray-50 rounded-lg p-4 font-mono text-xs sm:text-sm text-gray-700 border border-gray-200">
-                     <div className="mb-2">
-                         <span className="font-semibold text-indigo-600">公式：</span>
-                         归一化净值(t) = ( 基金单位净值(t) / 基金单位净值(起始日) ) × 100
-                     </div>
-                     <div className="flex flex-col sm:flex-row gap-4 mt-3 pt-3 border-t border-gray-200">
-                         <div>
-                             <span className="text-gray-500 block mb-1">示例：基金A</span>
-                             起始净值: 2.000 → <span className="font-bold">100.00</span><br/>
-                             当前净值: 2.200 → <span className="font-bold">110.00</span> (+10%)
-                         </div>
-                         <div>
-                             <span className="text-gray-500 block mb-1">示例：基金B</span>
-                             起始净值: 5.000 → <span className="font-bold">100.00</span><br/>
-                             当前净值: 4.500 → <span className="font-bold">90.00</span> (-10%)
-                         </div>
-                     </div>
-                 </div>
-             </div>
-        </div>
-      </div>
-      
-      {/* Selected Funds Table */}
-      <div className="bg-white shadow-sm border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-           <h3 className="text-sm font-semibold text-gray-900">对比基金详情</h3>
-        </div>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">基金名称</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">成立日期</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">最新净值</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">累计收益(YTD)</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">数据状态</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {selectedFunds.map((fund) => {
-                const isGap = gaps.find(g => g.fundId === fund.id);
-                const isPatched = patchRules.some(r => r.targetFundId === fund.id);
-                return (
-                    <tr key={fund.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{fund.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{fund.inceptionDate}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fund.nav.toFixed(4)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <span className={fund.ytdReturn >= 0 ? 'text-red-600' : 'text-green-600'}>
-                        {fund.ytdReturn >= 0 ? '+' : ''}{fund.ytdReturn}%
-                        </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {isGap && !isPatched ? (
-                             <Badge color="red">缺失 (需补齐)</Badge>
-                        ) : isPatched ? (
-                            <Badge color="amber">已配置补齐</Badge>
-                        ) : (
-                            <Badge color="green">完整</Badge>
-                        )}
-                    </td>
-                    </tr>
-                );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* AI Analysis Result */}
-      {analysis.content && (
-        <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-xl p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-lg font-bold text-gray-900">AI 智能分析报告</h3>
-          </div>
-          <div className="prose prose-sm prose-indigo max-w-none text-gray-700">
-            <ReactMarkdown>{analysis.content}</ReactMarkdown>
-          </div>
-        </div>
-      )}
-
-      <PatchConfigModal 
-        isOpen={isPatchModalOpen}
-        onClose={() => setIsPatchModalOpen(false)}
-        patchRules={patchRules}
-        onAddRule={onAddPatchRule}
-        onRemoveRule={onRemovePatchRule}
-        allFunds={MOCK_FUNDS}
-        comparisonStartDate={chartStartDate}
-      />
-    </div>
-  );
-};
-
-// --- Fund Detail Page ---
-
+  };
+  
 const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: PatchRule) => void, onRemovePatchRule: (id: string) => void }> = ({ patchRules, onAddPatchRule, onRemovePatchRule }) => {
+    // ... Existing implementation ...
     const { id } = useParams();
     const navigate = useNavigate();
     const fund = MOCK_FUNDS.find(f => f.id === id);
@@ -1231,11 +1343,17 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
 
 // --- Portfolio Page ---
 
-const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfolio }> = ({ patchRules, portfolio }) => {
+const PortfolioPage: React.FC<{ 
+    patchRules: PatchRule[], 
+    portfolio: ClientPortfolio,
+    onAddExternalAsset: (accountId: string, holding: Holding) => void 
+}> = ({ patchRules, portfolio, onAddExternalAsset }) => {
   const [metric, setMetric] = useState<'NAV' | 'CHANGE'>('NAV');
   const [chartView, setChartView] = useState<'OVERLAY' | 'GRID'>('OVERLAY');
   const [perfRange, setPerfRange] = useState<number | string>(90);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
+  const [isAddAssetModalOpen, setIsAddAssetModalOpen] = useState(false);
+  const [initialAccountForAdd, setInitialAccountForAdd] = useState<string | undefined>(undefined);
 
   // Calculate Asset Allocation & Totals
   const portfolioSummary = useMemo(() => {
@@ -1246,7 +1364,7 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
        [FundType.STRATEGY]: 0,
        [FundType.CROSS_BORDER]: 0,
        [FundType.BOND]: 0,
-       'CASH': 0 // Add Cash bucket
+       'CASH': 0
     };
 
     portfolio.accounts.forEach(acc => {
@@ -1255,14 +1373,24 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
       totalAssets += cash;
       allocation['CASH'] += cash;
 
-      // Add Holdings
+      // Add Holdings (Internal + External)
       acc.holdings.forEach(h => {
-        const fund = MOCK_FUNDS.find(f => f.id === h.fundId);
-        if (fund) {
-          const value = h.shares * fund.nav;
-          totalAssets += value;
-          allocation[fund.type] += value;
+        let val = 0;
+        let type = FundType.BROAD_MARKET;
+
+        if (h.isExternal) {
+            val = h.shares * (h.externalNav || 0);
+            type = h.externalType || FundType.BROAD_MARKET;
+        } else {
+            const fund = MOCK_FUNDS.find(f => f.id === h.fundId);
+            if (fund) {
+                val = h.shares * fund.nav;
+                type = fund.type;
+            }
         }
+        totalAssets += val;
+        if (allocation[type] !== undefined) allocation[type] += val;
+        else allocation[type] = val; // Handle unexpected types safely
       });
     });
 
@@ -1292,12 +1420,21 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
 
     // Holdings
     account.holdings.forEach(h => {
-        const fund = MOCK_FUNDS.find(f => f.id === h.fundId);
-        if (fund) {
-          const value = h.shares * fund.nav;
-          accTotal += value;
-          allocation[fund.type] += value;
+        let val = 0;
+        let type = FundType.BROAD_MARKET;
+
+        if (h.isExternal) {
+             val = h.shares * (h.externalNav || 0);
+             type = h.externalType || FundType.BROAD_MARKET;
+        } else {
+            const fund = MOCK_FUNDS.find(f => f.id === h.fundId);
+            if (fund) {
+                val = h.shares * fund.nav;
+                type = fund.type;
+            }
         }
+        accTotal += val;
+        if (allocation[type] !== undefined) allocation[type] += val;
     });
     
     return {
@@ -1308,12 +1445,19 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
     };
   };
 
-  // Performance Insight Data
+  const openAddAssetModal = (accountId?: string) => {
+      setInitialAccountForAdd(accountId);
+      setIsAddAssetModalOpen(true);
+  };
+
+  // Performance Insight Data (Only for internal funds)
   const displayedFunds = useMemo(() => {
     const funds = new Set<string>();
     portfolio.accounts.forEach(acc => {
       if (selectedAccountId === 'ALL' || acc.id === selectedAccountId) {
-        acc.holdings.forEach(h => funds.add(h.fundId));
+        acc.holdings.forEach(h => {
+             if (!h.isExternal && h.fundId) funds.add(h.fundId);
+        });
       }
     });
     return MOCK_FUNDS.filter(f => funds.has(f.id));
@@ -1323,7 +1467,7 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
       if (chartView === 'OVERLAY') {
         return generateChartData(displayedFunds, typeof perfRange === 'number' ? perfRange : 90, patchRules, MOCK_FUNDS);
       }
-      return { chartData: [], gaps: [] }; // Grid mode handles its own data in SingleFundPerformanceCard
+      return { chartData: [], gaps: [] }; 
   }, [displayedFunds, perfRange, patchRules, chartView]);
 
 
@@ -1335,50 +1479,78 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
            <h1 className="text-2xl font-bold text-gray-900">客户持仓分析</h1>
            <p className="mt-1 text-sm text-gray-500">客户：{portfolio.clientName}</p>
         </div>
-        <div className="text-right">
-           <div className="text-sm text-gray-500">总资产规模 (含现金)</div>
-           <div className="text-3xl font-bold text-indigo-600 font-mono">
-             ¥ {(portfolioSummary.totalAssets / 10000).toFixed(2)} 万
+        <div className="flex flex-col items-end gap-2">
+           <div className="text-right">
+                <div className="text-sm text-gray-500">总资产规模 (含现金)</div>
+                <div className="text-3xl font-bold text-indigo-600 font-mono">
+                    ¥ {(portfolioSummary.totalAssets / 10000).toFixed(2)} 万
+                </div>
            </div>
         </div>
       </div>
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="col-span-1 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-             <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                 <PieChartIcon className="w-5 h-5 text-indigo-600" />
-                 总体资产配置
-             </h3>
-             <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                           data={portfolioSummary.pieData}
-                           cx="50%"
-                           cy="50%"
-                           innerRadius={60}
-                           outerRadius={80}
-                           paddingAngle={5}
-                           dataKey="value"
-                        >
-                            {portfolioSummary.pieData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={getChartColorForType(entry.type as FundType | 'CASH')} />
-                            ))}
-                        </Pie>
-                        <RechartsTooltip formatter={(val: number) => `¥${(val/10000).toFixed(2)}万`} />
-                        <Legend iconType="circle" />
-                    </PieChart>
-                </ResponsiveContainer>
+      {/* Overview Cards (Horizontal Layout for Overall Chart) */}
+      <div className="flex flex-col gap-6">
+          {/* Overall Asset Allocation - Horizontal Layout */}
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+             <div className="flex flex-col md:flex-row gap-8 items-center">
+                 <div className="w-full md:w-1/3 flex flex-col items-center">
+                     <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                         <PieChartIcon className="w-5 h-5 text-indigo-600" />
+                         总体资产配置
+                     </h3>
+                     <div className="w-full h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                data={portfolioSummary.pieData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={45}
+                                outerRadius={65}
+                                paddingAngle={5}
+                                dataKey="value"
+                                >
+                                    {portfolioSummary.pieData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={getChartColorForType(entry.type as FundType | 'CASH')} />
+                                    ))}
+                                </Pie>
+                                <RechartsTooltip formatter={(val: number) => `¥${(val/10000).toFixed(2)}万`} />
+                            </PieChart>
+                        </ResponsiveContainer>
+                     </div>
+                 </div>
+                 
+                 {/* Legend / Details on the right */}
+                 <div className="w-full md:w-2/3 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                     {portfolioSummary.pieData.map((entry, idx) => {
+                         const percentage = ((entry.value / portfolioSummary.totalAssets) * 100).toFixed(1);
+                         return (
+                            <div key={idx} className="bg-gray-50 rounded-lg p-3 border border-gray-100 flex items-center justify-between">
+                                <div>
+                                    <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
+                                        <div className="w-3 h-3 rounded-full" style={{backgroundColor: getChartColorForType(entry.type as FundType | 'CASH')}} />
+                                        {entry.name}
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">{percentage}%</div>
+                                </div>
+                                <div className="text-sm font-mono font-semibold text-gray-900">
+                                    ¥{(entry.value/10000).toFixed(0)}万
+                                </div>
+                            </div>
+                         );
+                     })}
+                 </div>
              </div>
           </div>
           
-          <div className="col-span-2 space-y-6">
+          {/* Individual Account Cards */}
+          <div className="space-y-6">
              {portfolio.accounts.map(account => {
                  const summary = getAccountSummary(account);
                  return (
-                     <div key={account.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="flex justify-between items-start mb-4">
+                     <div key={account.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm relative group">
+                        <div className="flex justify-between items-start mb-6">
                             <div className="flex items-center gap-3">
                                 {account.type === AccountType.PERSONAL ? (
                                     <div className="p-2 bg-blue-100 rounded-lg text-blue-600"><User className="w-5 h-5" /></div>
@@ -1386,71 +1558,142 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
                                     <div className="p-2 bg-purple-100 rounded-lg text-purple-600"><Users className="w-5 h-5" /></div>
                                 )}
                                 <div>
-                                    <h4 className="font-bold text-gray-900">{account.name}</h4>
+                                    <h4 className="font-bold text-gray-900 text-lg">{account.name}</h4>
                                     <Badge color={account.type === AccountType.PERSONAL ? 'blue' : 'purple'}>{account.type}</Badge>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <span className="text-sm text-gray-500">账户总资产:</span>
-                                <span className="ml-2 font-mono font-bold text-gray-800">¥ {(summary.total / 10000).toFixed(2)} 万</span>
+                            <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                    <span className="text-sm text-gray-500 block">账户总资产</span>
+                                    <span className="font-mono font-bold text-gray-800 text-lg">¥ {(summary.total / 10000).toFixed(2)} 万</span>
+                                </div>
+                                <button 
+                                    onClick={() => openAddAssetModal(account.id)}
+                                    className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors flex flex-col items-center justify-center w-10 h-10 border border-indigo-100 shadow-sm"
+                                    title="录入外部资产"
+                                >
+                                    <Plus className="w-5 h-5" />
+                                </button>
                             </div>
                         </div>
 
-                        {/* Holdings Table */}
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">持仓项目</th>
-                                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">持有份额/数量</th>
-                                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">持仓成本</th>
-                                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">最新市值</th>
-                                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">盈亏</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {/* Cash Row */}
-                                    <tr className="bg-cyan-50/30">
-                                        <td className="px-4 py-2">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-medium text-gray-900 flex items-center gap-1"><Coins className="w-3 h-3 text-cyan-600"/> 账户现金余额</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-2 text-right text-sm text-gray-600 font-mono">-</td>
-                                        <td className="px-4 py-2 text-right text-sm text-gray-600 font-mono">-</td>
-                                        <td className="px-4 py-2 text-right text-sm text-gray-900 font-mono font-medium">¥{((account.cashBalance || 0)/10000).toFixed(2)}万</td>
-                                        <td className="px-4 py-2 text-right text-sm font-mono text-gray-400">-</td>
-                                    </tr>
-                                    {/* Funds Rows */}
-                                    {account.holdings.map(h => {
-                                        const fund = MOCK_FUNDS.find(f => f.id === h.fundId);
-                                        if (!fund) return null;
-                                        const marketVal = h.shares * fund.nav;
-                                        const costVal = h.shares * h.avgCost;
-                                        const pnl = marketVal - costVal;
-                                        const pnlPercent = (pnl / costVal) * 100;
-                                        
-                                        return (
-                                            <tr key={h.fundId}>
-                                                <td className="px-4 py-2">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm font-medium text-gray-900">{fund.name}</span>
-                                                        <span className="text-xs text-gray-500">{fund.code}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-2 text-right text-sm text-gray-600 font-mono">{h.shares.toLocaleString()}</td>
-                                                <td className="px-4 py-2 text-right text-sm text-gray-600 font-mono">{h.avgCost.toFixed(3)}</td>
-                                                <td className="px-4 py-2 text-right text-sm text-gray-900 font-mono font-medium">{(marketVal/10000).toFixed(2)}万</td>
-                                                <td className="px-4 py-2 text-right text-sm font-mono">
-                                                    <span className={pnl >= 0 ? 'text-red-600' : 'text-green-600'}>
-                                                        {pnl >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                        {/* Split Layout: Pie Chart (Left) + Holdings Table (Right) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Individual Account Pie Chart */}
+                            <div className="col-span-1 flex flex-col items-center justify-center min-h-[200px] bg-gray-50 rounded-lg border border-gray-100 p-4">
+                                <h5 className="text-xs font-semibold text-gray-500 mb-2 w-full text-center">账户配置分布</h5>
+                                <div className="w-full h-40">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={summary.pieData}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={35}
+                                                outerRadius={55}
+                                                paddingAngle={2}
+                                                dataKey="value"
+                                            >
+                                                {summary.pieData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={getChartColorForType(entry.type as FundType | 'CASH')} />
+                                                ))}
+                                            </Pie>
+                                            <RechartsTooltip formatter={(val: number) => `¥${(val/10000).toFixed(2)}万`} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="flex flex-wrap gap-2 justify-center mt-2">
+                                    {summary.pieData.slice(0, 4).map(entry => (
+                                        <div key={entry.name} className="flex items-center gap-1 text-[10px] text-gray-500">
+                                            <div className="w-2 h-2 rounded-full" style={{backgroundColor: getChartColorForType(entry.type as FundType | 'CASH')}} />
+                                            {entry.name}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Holdings Table */}
+                            <div className="col-span-2 overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">持仓项目</th>
+                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">持有份额/数量</th>
+                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">持仓成本</th>
+                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">最新市值</th>
+                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">盈亏</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {/* Cash Row */}
+                                        <tr className="bg-cyan-50/30">
+                                            <td className="px-4 py-2">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-medium text-gray-900 flex items-center gap-1"><Coins className="w-3 h-3 text-cyan-600"/> 账户现金余额</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-2 text-right text-sm text-gray-600 font-mono">-</td>
+                                            <td className="px-4 py-2 text-right text-sm text-gray-600 font-mono">-</td>
+                                            <td className="px-4 py-2 text-right text-sm text-gray-900 font-mono font-medium">¥{((account.cashBalance || 0)/10000).toFixed(2)}万</td>
+                                            <td className="px-4 py-2 text-right text-sm font-mono text-gray-400">-</td>
+                                        </tr>
+                                        {/* Funds Rows */}
+                                        {account.holdings.map((h, idx) => {
+                                            let name = '未知产品';
+                                            let code = '';
+                                            let nav = 0;
+                                            let date = '';
+                                            let type = '';
+
+                                            if (h.isExternal) {
+                                                name = h.externalName || '外部资产';
+                                                code = 'MANUAL';
+                                                nav = h.externalNav || 0;
+                                                date = h.externalNavDate || '';
+                                                type = h.externalType || '其他';
+                                            } else {
+                                                const fund = MOCK_FUNDS.find(f => f.id === h.fundId);
+                                                if (fund) {
+                                                    name = fund.name;
+                                                    code = fund.code;
+                                                    nav = fund.nav;
+                                                    type = fund.type;
+                                                }
+                                            }
+
+                                            const marketVal = h.shares * nav;
+                                            const costVal = h.shares * h.avgCost;
+                                            const pnl = marketVal - costVal;
+                                            const pnlPercent = costVal > 0 ? (pnl / costVal) * 100 : 0;
+                                            
+                                            return (
+                                                <tr key={idx}>
+                                                    <td className="px-4 py-2">
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-sm font-medium text-gray-900">{name}</span>
+                                                                {h.isExternal && <Badge color="gray">外部</Badge>}
+                                                            </div>
+                                                            <div className="flex gap-2 text-xs text-gray-500">
+                                                                <span>{code}</span>
+                                                                {h.isExternal && <span>净值日期: {date}</span>}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-2 text-right text-sm text-gray-600 font-mono">{h.shares.toLocaleString()}</td>
+                                                    <td className="px-4 py-2 text-right text-sm text-gray-600 font-mono">{h.avgCost.toFixed(3)}</td>
+                                                    <td className="px-4 py-2 text-right text-sm text-gray-900 font-mono font-medium">{(marketVal/10000).toFixed(2)}万</td>
+                                                    <td className="px-4 py-2 text-right text-sm font-mono">
+                                                        <span className={pnl >= 0 ? 'text-red-600' : 'text-green-600'}>
+                                                            {pnl >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                      </div>
                  );
@@ -1556,13 +1799,21 @@ const PortfolioPage: React.FC<{ patchRules: PatchRule[], portfolio: ClientPortfo
              </div>
         )}
       </div>
+
+      <AddAssetModal 
+        isOpen={isAddAssetModalOpen}
+        onClose={() => setIsAddAssetModalOpen(false)}
+        accounts={portfolio.accounts}
+        initialAccountId={initialAccountForAdd}
+        onAdd={onAddExternalAsset}
+      />
     </div>
   );
 };
 
-// --- Liquidity Page ---
-
+// ... LiquidityPage assumed unchanged ...
 const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, onUpdateCash: (accountId: string, amount: number) => void }> = ({ portfolio, onUpdateCash }) => {
+    // ... Existing implementation ...
     const [cashFlows, setCashFlows] = useState<CashFlow[]>([
         { id: '1', date: '2025-06-20', amount: 500000, description: '企业季度分红', type: 'INFLOW' },
         { id: '2', date: '2025-06-25', amount: 200000, description: '家族信托管理费', type: 'OUTFLOW' },
@@ -2188,6 +2439,18 @@ const App: React.FC = () => {
         }));
     };
 
+    // Handler to add external asset
+    const addExternalAsset = (accountId: string, holding: Holding) => {
+        setPortfolio(prev => ({
+            ...prev,
+            accounts: prev.accounts.map(acc => 
+                acc.id === accountId 
+                ? { ...acc, holdings: [...acc.holdings, holding] }
+                : acc
+            )
+        }));
+    };
+
     return (
         <HashRouter>
             <Layout>
@@ -2211,6 +2474,7 @@ const App: React.FC = () => {
                         <PortfolioPage 
                             patchRules={patchRules} 
                             portfolio={portfolio}
+                            onAddExternalAsset={addExternalAsset}
                         />
                     } />
                     <Route path="/liquidity" element={
