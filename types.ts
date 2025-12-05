@@ -94,10 +94,23 @@ export enum LiquidityTier {
   LOW = '较低流动性 (T+5/QDII)',
 }
 
+export enum Frequency {
+  MONTHLY = 'MONTHLY',
+  QUARTERLY = 'QUARTERLY',
+  YEARLY = 'YEARLY'
+}
+
+export interface RecurringRule {
+  id: string;
+  frequency: Frequency;
+  count: number;
+}
+
 export interface CashFlow {
   id: string;
   date: string; // YYYY-MM-DD
   amount: number;
   description: string;
   type: 'INFLOW' | 'OUTFLOW';
+  recurringRuleId?: string; // Optional linkage to a recurring rule
 }

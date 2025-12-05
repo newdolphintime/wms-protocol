@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { 
@@ -45,13 +46,14 @@ import {
   Info,
   Unlock,
   ShieldCheck,
-  AlertOctagon
+  AlertOctagon,
+  Calendar as CalendarIcon
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, PieChart, Pie, AreaChart, Area, ComposedChart, ReferenceLine } from 'recharts';
 import { MOCK_FUNDS, MOCK_PORTFOLIO, generateChartData, generateFundHistory, getLiquidityTier, getSettlementDays, calculateAvailabilityDate } from './services/dataService';
 import { analyzeFunds } from './services/geminiService';
 import ComparisonChart from './components/ComparisonChart';
-import { Fund, AnalysisState, FundType, PatchRule, Account, AccountType, LiquidityTier, CashFlow, ClientPortfolio, Holding, RedemptionRule } from './types';
+import { Fund, AnalysisState, FundType, PatchRule, Account, AccountType, LiquidityTier, CashFlow, ClientPortfolio, Holding, RedemptionRule, Frequency } from './types';
 import ReactMarkdown from 'react-markdown';
 
 // --- Shared Components ---
@@ -176,6 +178,119 @@ const TimelineVisualizer: React.FC<{
       </div>
     );
   };
+
+const FinancialCalendar: React.FC<{ cashFlows: CashFlow[] }> = ({ cashFlows }) => {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [selectedDay, setSelectedDay] = useState<number | null>(null);
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startOffset = firstDay.getDay();
+    const daysInMonth = lastDay.getDate();
+
+    const weeks = [];
+    let day = 1;
+    for (let i = 0; i < 6; i++) {
+        const week = [];
+        for (let j = 0; j < 7; j++) {
+            if (i === 0 && j < startOffset) {
+                week.push(null);
+            } else if (day > daysInMonth) {
+                week.push(null);
+            } else {
+                week.push(day);
+                day++;
+            }
+        }
+        weeks.push(week);
+        if (day > daysInMonth) break;
+    }
+
+    const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+    const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+
+    const flowsForDate = (d: number) => {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        return cashFlows.filter(f => f.date === dateStr);
+    };
+
+    const handleDateClick = (d: number) => {
+        setSelectedDay(d);
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        setSelectedDate(dateStr);
+    };
+
+    const selectedFlows = selectedDate ? cashFlows.filter(f => f.date === selectedDate) : [];
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-2">
+                <button onClick={prevMonth} className="p-1 hover:bg-gray-100 rounded"><ChevronLeft className="w-4 h-4"/></button>
+                <div className="text-sm font-bold text-gray-900">{year}年{month + 1}月</div>
+                <button onClick={nextMonth} className="p-1 hover:bg-gray-100 rounded"><ChevronRight className="w-4 h-4"/></button>
+            </div>
+            <div className="grid grid-cols-7 text-center text-xs text-gray-500 mb-1">
+                {['日','一','二','三','四','五','六'].map(d => <div key={d}>{d}</div>)}
+            </div>
+            <div className="flex-1">
+                {weeks.map((week, wIdx) => (
+                    <div key={wIdx} className="grid grid-cols-7 h-8">
+                        {week.map((d, dIdx) => {
+                            if (!d) return <div key={dIdx} />;
+                            const flows = flowsForDate(d);
+                            const hasIn = flows.some(f => f.type === 'INFLOW');
+                            const hasOut = flows.some(f => f.type === 'OUTFLOW');
+                            const isSelected = selectedDay === d;
+                            
+                            return (
+                                <div 
+                                    key={dIdx} 
+                                    onClick={() => handleDateClick(d)}
+                                    className={`relative flex items-center justify-center cursor-pointer rounded-full hover:bg-gray-50 text-xs text-gray-700 ${isSelected ? 'bg-indigo-600 text-white font-bold ring-2 ring-indigo-200' : ''}`}
+                                >
+                                    {d}
+                                    <div className="absolute bottom-0.5 flex gap-0.5">
+                                        {hasIn && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-green-500'}`}></div>}
+                                        {hasOut && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-red-500'}`}></div>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ))}
+            </div>
+            {selectedDate && (
+                <div className="mt-3 border-t border-gray-100 pt-2">
+                    <div className="text-xs font-bold text-gray-500 mb-1 flex justify-between items-center">
+                        <span>{selectedDate} 资金明细</span>
+                        <button onClick={() => { setSelectedDate(null); setSelectedDay(null); }} className="text-gray-400 hover:text-gray-600"><X className="w-3 h-3"/></button>
+                    </div>
+                    {selectedFlows.length === 0 ? (
+                        <div className="text-xs text-gray-400 text-center py-2 bg-gray-50 rounded dashed border border-gray-200">无资金记录</div>
+                    ) : (
+                        <div className="space-y-1 max-h-[80px] overflow-y-auto">
+                            {selectedFlows.map(f => (
+                                <div key={f.id} className="flex justify-between items-center text-[10px] bg-gray-50 p-1.5 rounded">
+                                    <div className="flex items-center gap-1 overflow-hidden">
+                                        {f.recurringRuleId && <Repeat className="w-3 h-3 text-indigo-500 shrink-0"/>}
+                                        <span className="truncate max-w-[80px]" title={f.description}>{f.description}</span>
+                                    </div>
+                                    <span className={f.type === 'INFLOW' ? 'text-green-600' : 'text-red-600'}>
+                                        {f.type === 'INFLOW' ? '+' : '-'}¥{(f.amount/10000).toFixed(1)}万
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 // --- Single Fund Card for Grid View ---
 
@@ -710,13 +825,13 @@ const FundListPage: React.FC = () => {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {MOCK_FUNDS.map((fund) => (
-              <tr key={fund.id} className={`hover:bg-gray-50 transition-colors ${selectedFunds.has(fund.id) ? 'bg-indigo-50/30' : ''}`}>
+              <tr key={fund.id} onClick={() => toggleFund(fund.id)} className={`hover:bg-gray-50 transition-colors cursor-pointer ${selectedFunds.has(fund.id) ? 'bg-indigo-50/30' : ''}`}>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <input type="checkbox" checked={selectedFunds.has(fund.id)} onChange={() => toggleFund(fund.id)} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded cursor-pointer"/>
+                  <input type="checkbox" checked={selectedFunds.has(fund.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggleFund(fund.id)} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded cursor-pointer"/>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex flex-col">
-                    <Link to={`/fund/${fund.id}`} className="text-sm font-medium text-gray-900 hover:text-indigo-600 hover:underline">{fund.name}</Link>
+                    <Link to={`/fund/${fund.id}`} onClick={(e) => e.stopPropagation()} className="text-sm font-medium text-gray-900 hover:text-indigo-600 hover:underline">{fund.name}</Link>
                     <span className="text-xs text-gray-500 font-mono">{fund.code}</span>
                   </div>
                 </td>
@@ -726,7 +841,7 @@ const FundListPage: React.FC = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={`font-medium ${fund.dayChange >= 0 ? 'text-red-600' : 'text-green-600'}`}>{fund.dayChange > 0 ? '+' : ''}{fund.dayChange}%</span></td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={`font-medium ${fund.ytdReturn >= 0 ? 'text-red-600' : 'text-green-600'}`}>{fund.ytdReturn > 0 ? '+' : ''}{fund.ytdReturn}%</span></td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <Link to={`/fund/${fund.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center gap-1"><Search className="w-3 h-3"/> 详情</Link>
+                    <Link to={`/fund/${fund.id}`} onClick={(e) => e.stopPropagation()} className="text-indigo-600 hover:text-indigo-900 flex items-center gap-1"><Search className="w-3 h-3"/> 详情</Link>
                 </td>
               </tr>
             ))}
@@ -1007,7 +1122,6 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
                     <div className="flex items-center gap-2">
                         <Filter className="w-4 h-4 text-gray-400"/>
                         <label className="text-sm text-gray-600 flex items-center gap-2 cursor-pointer select-none">
-                            {/* Fix: Use e.target.checked instead of e.target.value for boolean state */}
                             <input type="checkbox" checked={filterPatched} onChange={e => setFilterPatched(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500"/>
                             只看补齐数据
                         </label>
@@ -1413,6 +1527,11 @@ const LiquidityPage: React.FC<{
   const [planType, setPlanType] = useState<'INFLOW'|'OUTFLOW'>('OUTFLOW');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [insuranceName, setInsuranceName] = useState('');
+  
+  // Recurring Settings
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurFrequency, setRecurFrequency] = useState<Frequency>(Frequency.MONTHLY);
+  const [recurCount, setRecurCount] = useState<number>(12);
 
   // Rules Modal State
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
@@ -1534,10 +1653,6 @@ const LiquidityPage: React.FC<{
             if (openDate < today) continue;
             
             // It's an open date. Calculate settlement.
-            // Actually, the prompt says "On Open Day... choose to redeem".
-            // So the "Opportunity" is on the Open Day itself. The cash arrives later if chosen.
-            // But visualizing the Open Day is more actionable. 
-            // Let's show the bar ON the Open Day.
             const dateStr = openDate.toISOString().split('T')[0];
             periodicOpportunities.push({
                 dateStr,
@@ -1631,24 +1746,56 @@ const LiquidityPage: React.FC<{
           finalType = 'OUTFLOW';
       }
 
-      setCashFlows([...cashFlows, {
-          id: Date.now().toString(),
-          date: planDate,
-          amount: parseFloat(planAmount),
-          description: finalDesc,
-          type: finalType
-      }]);
+      const newFlows: CashFlow[] = [];
+      const ruleId = isRecurring ? Date.now().toString() : undefined;
+      
+      if (isRecurring) {
+          // Generate multiple flows
+          const [startYear, startMonth, startDay] = planDate.split('-').map(Number);
+          
+          for(let i = 0; i < recurCount; i++) {
+              const current = new Date(startYear, startMonth - 1, startDay);
+              
+              if (recurFrequency === Frequency.MONTHLY) {
+                  current.setMonth(current.getMonth() + i);
+              } else if (recurFrequency === Frequency.QUARTERLY) {
+                  current.setMonth(current.getMonth() + (i * 3));
+              } else if (recurFrequency === Frequency.YEARLY) {
+                  current.setFullYear(current.getFullYear() + i);
+              }
+              
+              // Handle end of month edge cases (e.g. Jan 31 -> Feb 28/29)
+              // With setMonth, Date object handles auto-correction, though sometimes to next month.
+              // For simplicity, we use standard Date logic.
+              
+              const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+              
+              newFlows.push({
+                  id: `${ruleId}-${i}`,
+                  date: dateStr,
+                  amount: parseFloat(planAmount),
+                  description: `${finalDesc} (${i+1}/${recurCount})`,
+                  type: finalType,
+                  recurringRuleId: ruleId
+              });
+          }
+      } else {
+          // Single Flow
+          newFlows.push({
+              id: Date.now().toString(),
+              date: planDate,
+              amount: parseFloat(planAmount),
+              description: finalDesc,
+              type: finalType
+          });
+      }
+
+      setCashFlows([...cashFlows, ...newFlows]);
+      
       // Reset
       setPlanAmount(''); setPlanDate(''); setPlanDesc(''); setInsuranceName(''); setSelectedProductId('');
+      setIsRecurring(false); // Reset switch
   };
-
-  const barData = [
-    { name: 'T+1 (极速)', value: liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH] },
-    { name: 'T+3 (一般)', value: liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH] + liquidityData[LiquidityTier.MEDIUM] },
-    { name: 'T+7 (短期)', value: liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH] + liquidityData[LiquidityTier.MEDIUM] + liquidityData[LiquidityTier.LOW] },
-    { name: 'T+30 (月度)', value: liquidityData['T30'] },
-    { name: '全部 (一年)', value: liquidityData['Total'] },
-  ];
 
   const openRuleModal = (accId: string, hIdx: number, h: Holding, name: string) => {
       setEditingRuleContext({ accId, hIdx, hName: name, rule: h.redemptionRule });
@@ -1685,21 +1832,42 @@ const LiquidityPage: React.FC<{
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Timeline Chart */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-indigo-600"/> 资金回笼时间轴 (累积可用)
+          {/* Liquidity Report (Replaced Timeline Chart) */}
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col">
+            <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-indigo-600"/> 流动性分布报表 (可变现资金)
             </h3>
-            <div className="h-[250px]">
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={barData} layout="vertical" margin={{left: 30}}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false}/>
-                        <XAxis type="number" tickFormatter={val => `¥${(val/10000).toFixed(0)}万`} />
-                        <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 11}} />
-                        <RechartsTooltip formatter={(val: number) => `¥${val.toLocaleString()}`} />
-                        <Bar dataKey="value" fill="#4f46e5" radius={[0, 4, 4, 0]} barSize={20} />
-                    </BarChart>
-                </ResponsiveContainer>
+            <div className="flex-1 grid grid-cols-2 gap-4">
+                 <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100 flex flex-col justify-between">
+                     <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1">T+0 实时可用</div>
+                     <div className="text-xl font-mono font-bold text-emerald-900">¥{(liquidityData[LiquidityTier.CASH] / 10000).toFixed(1)}万</div>
+                     <div className="text-[10px] text-emerald-500">现金余额</div>
+                 </div>
+                 <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 flex flex-col justify-between">
+                     <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">T+1 极速回笼</div>
+                     <div className="text-xl font-mono font-bold text-blue-900">¥{(liquidityData[LiquidityTier.HIGH] / 10000).toFixed(1)}万</div>
+                     <div className="text-[10px] text-blue-500">货币/债券/宽基</div>
+                 </div>
+                 <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100 flex flex-col justify-between">
+                     <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-1">T+3 一般回笼</div>
+                     <div className="text-xl font-mono font-bold text-indigo-900">¥{(liquidityData[LiquidityTier.MEDIUM] / 10000).toFixed(1)}万</div>
+                     <div className="text-[10px] text-indigo-500">行业/策略ETF</div>
+                 </div>
+                 <div className="bg-purple-50 rounded-lg p-3 border border-purple-100 flex flex-col justify-between">
+                     <div className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-1">T+7 短期回笼</div>
+                     <div className="text-xl font-mono font-bold text-purple-900">¥{(liquidityData[LiquidityTier.LOW] / 10000).toFixed(1)}万</div>
+                     <div className="text-[10px] text-purple-500">QDII/跨境资产</div>
+                 </div>
+                 <div className="col-span-2 bg-orange-50 rounded-lg p-3 border border-orange-100 flex items-center justify-between">
+                     <div>
+                        <div className="text-xs font-semibold text-orange-600 uppercase tracking-wider mb-1">T+30 月度可用 (含定期)</div>
+                        <div className="text-xl font-mono font-bold text-orange-900">¥{(liquidityData['T30'] / 10000).toFixed(1)}万</div>
+                     </div>
+                     <div className="text-right">
+                         <div className="text-xs text-gray-500 mb-1">年度总资产</div>
+                         <div className="text-lg font-bold text-gray-900">¥{(liquidityData['Total'] / 10000).toFixed(1)}万</div>
+                     </div>
+                 </div>
             </div>
           </div>
           
@@ -1862,7 +2030,8 @@ const LiquidityPage: React.FC<{
       </div>
 
       {/* Planning Form */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm p-6">
              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Target className="w-5 h-5 text-indigo-600"/> 资金计划录入 (未来收支)</h3>
              
              <div className="space-y-4 mb-6">
@@ -1922,6 +2091,28 @@ const LiquidityPage: React.FC<{
                     </div>
                 </div>
 
+                <div className="border-t border-gray-100 pt-4 mt-2">
+                     <div className="flex items-center gap-2 mb-3">
+                         <input type="checkbox" id="isRecurring" checked={isRecurring} onChange={e => setIsRecurring(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500"/>
+                         <label htmlFor="isRecurring" className="text-sm font-medium text-gray-700 flex items-center gap-1"><Repeat className="w-3 h-3"/> 设为周期性计划</label>
+                     </div>
+                     {isRecurring && (
+                         <div className="bg-gray-50 p-3 rounded-lg space-y-3 mb-4">
+                             <div className="flex items-center gap-2">
+                                 <span className="text-xs text-gray-600">频率</span>
+                                 <select value={recurFrequency} onChange={e => setRecurFrequency(e.target.value as Frequency)} className="text-xs border-gray-300 rounded-md">
+                                     <option value={Frequency.MONTHLY}>每月</option>
+                                     <option value={Frequency.QUARTERLY}>每季</option>
+                                     <option value={Frequency.YEARLY}>每年</option>
+                                 </select>
+                                 <span className="text-xs text-gray-600">重复次数</span>
+                                 <input type="number" min={2} max={60} value={recurCount} onChange={e => setRecurCount(parseInt(e.target.value))} className="w-16 text-xs border-gray-300 rounded-md"/>
+                                 <span className="text-xs text-gray-600">次</span>
+                             </div>
+                         </div>
+                     )}
+                </div>
+
                 <button onClick={addCashFlow} className="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 text-sm font-medium">添加计划</button>
              </div>
 
@@ -1930,13 +2121,16 @@ const LiquidityPage: React.FC<{
                  <div className="space-y-2 max-h-[150px] overflow-y-auto">
                      {cashFlows.map(flow => (
                          <div key={flow.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded border border-gray-100">
-                             <div>
-                                 <div className="font-medium text-gray-900">{flow.description}</div>
-                                 <div className="text-gray-500">{flow.date}</div>
+                             <div className="flex items-center gap-1 overflow-hidden">
+                                 {flow.recurringRuleId && <Repeat className="w-3 h-3 text-indigo-500 shrink-0"/>}
+                                 <div>
+                                     <div className="font-medium text-gray-900 truncate max-w-[120px]" title={flow.description}>{flow.description}</div>
+                                     <div className="text-gray-500">{flow.date}</div>
+                                 </div>
                              </div>
-                             <div className="text-right">
+                             <div className="text-right shrink-0">
                                  <div className={`font-mono font-medium ${flow.type === 'INFLOW' ? 'text-green-600' : 'text-red-600'}`}>
-                                     {flow.type === 'INFLOW' ? '+' : '-'}{flow.amount.toLocaleString()}
+                                     {flow.type === 'INFLOW' ? '+' : '-'}¥{(flow.amount/10000).toFixed(1)}万
                                  </div>
                                  <button onClick={() => setCashFlows(cashFlows.filter(c => c.id !== flow.id))} className="text-gray-400 hover:text-red-500 mt-1"><Trash2 className="w-3 h-3"/></button>
                              </div>
@@ -1945,6 +2139,15 @@ const LiquidityPage: React.FC<{
                  </div>
              </div>
           </div>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 flex flex-col">
+              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <CalendarIcon className="w-5 h-5 text-indigo-600"/> 资金日历
+              </h3>
+              <div className="flex-1 min-h-[300px]">
+                  <FinancialCalendar cashFlows={cashFlows} />
+              </div>
+          </div>
+      </div>
 
       <LiquidityRuleModal 
         isOpen={ruleModalOpen}
