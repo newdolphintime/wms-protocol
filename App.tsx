@@ -1778,7 +1778,7 @@ const LiquidityPage: React.FC<{
         const diffTime = availableDate.getTime() - today.getTime();
         const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        if (days > 1) {
+        if (days >= 1) {
              let reason = `约T+${days}`;
              if (h.redemptionRule?.ruleType === 'MONTHLY') {
                  reason = `每月${h.redemptionRule.openDay}日开放`;
@@ -1909,7 +1909,7 @@ const LiquidityPage: React.FC<{
   };
 
   // Derived values for summary cards
-  const currentAvailable = liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH];
+  const currentAvailable = liquidityData[LiquidityTier.CASH];
   const currentLocked = liquidityData['Total'] - currentAvailable;
   const totalProjectedExpense = useMemo(() => projectionData.reduce((sum, p) => sum + (p.rawExpense || 0), 0), [projectionData]);
 
@@ -1932,7 +1932,7 @@ const LiquidityPage: React.FC<{
             <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between relative group cursor-help transition-shadow hover:shadow-md">
                 <div>
                     <div className="text-sm text-gray-500 mb-1 flex items-center gap-1">
-                        当前现金储备 (T+0/1)
+                        当前现金储备 (T+0)
                         <Info className="w-3.5 h-3.5 text-gray-400" />
                     </div>
                     <div className="text-2xl font-bold text-gray-900 font-mono">¥ {currentAvailable.toLocaleString()}</div>
