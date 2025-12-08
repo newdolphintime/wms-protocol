@@ -113,4 +113,5 @@ export interface CashFlow {
   description: string;
   type: 'INFLOW' | 'OUTFLOW';
   recurringRuleId?: string; // Optional linkage to a recurring rule
+  relatedHoldingKey?: string; // composite key "accountId_index" to identify the specific holding reduced
 }

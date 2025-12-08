@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { Fund, ChartDataPoint, PatchRule } from '../types';
@@ -52,11 +51,11 @@ const ComparisonChart: React.FC<ComparisonChartProps> = ({
   };
 
   // Helper for internal GRID mode (legacy use case if needed, though App.tsx handles grid now)
-  const renderSingleChart = (fund: Fund, index: number, height = "100%", hideX = false) => {
+  const renderSingleChart = (fund: Fund, index: number, height: number | string = "100%", hideX = false) => {
     const color = COLORS[index % COLORS.length];
     
     return (
-        <ResponsiveContainer width="100%" height={height}>
+        <ResponsiveContainer width="100%" height={height as any}>
             <LineChart
                 data={data}
                 margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
