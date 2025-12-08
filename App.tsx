@@ -1661,6 +1661,7 @@ const LiquidityPage: React.FC<{
     const days = 30; // One month range
     const data = [];
     const today = new Date();
+    today.setHours(0,0,0,0);
     
     // Initial Cash
     let currentCash = liquidityData[LiquidityTier.CASH];
@@ -1672,9 +1673,40 @@ const LiquidityPage: React.FC<{
     // Sort cash flows by date
     const sortedFlows = [...cashFlows].sort((a,b) => a.date.localeCompare(b.date));
 
+    // Pre-calculate the arrival date for all holdings relative to TODAY
+    // This answers: "If I start the liquidation process NOW, when does the money arrive?"
+    const holdingsWithArrival = currentAccountHoldings.map(h => {
+        let val = 0;
+        let type = FundType.STRATEGY;
+
+        if (h.isExternal) {
+            val = (h.externalNav || 0) * h.shares;
+            type = h.externalType || FundType.STRATEGY;
+        } else {
+            const f = MOCK_FUNDS.find(fund => fund.id === h.fundId);
+            if (f) {
+                val = f.nav * h.shares;
+                type = f.type;
+            }
+        }
+        
+        // Calculate arrival date based on TODAY
+        const arrivalDate = calculateAvailabilityDate(today, h, type);
+        arrivalDate.setHours(0,0,0,0);
+        
+        return { 
+            ...h, 
+            value: val, 
+            arrivalDate: arrivalDate,
+            uniqueKey: h.uniqueKey
+        };
+    });
+
     for (let i = 0; i < days; i++) {
         const date = new Date(today);
-        date.setDate(date.getDate() + i);
+        date.setDate(today.getDate() + i);
+        date.setHours(0,0,0,0);
+        
         const dateStr = date.toISOString().split('T')[0];
         const displayDate = `${date.getMonth()+1}-${date.getDate()}`;
 
@@ -1683,9 +1715,6 @@ const LiquidityPage: React.FC<{
         const inflow = dailyFlows.filter(f => f.type === 'INFLOW').reduce((sum, f) => sum + f.amount, 0);
         const outflow = dailyFlows.filter(f => f.type === 'OUTFLOW').reduce((sum, f) => sum + f.amount, 0);
 
-        // Update cumulative redemptions based on flows happening TODAY
-        // So that subsequent days reflect the reduced asset value.
-        
         dailyFlows.forEach(f => {
             if (f.relatedHoldingKey && f.type === 'INFLOW') {
                 const currentRedeemed = redeemedAmounts.get(f.relatedHoldingKey) || 0;
@@ -1695,60 +1724,68 @@ const LiquidityPage: React.FC<{
 
         currentCash = currentCash + inflow - outflow;
 
-        // Determine Liquidity Status for each asset on this day
-        let liquidAssets = 0;
+        // Determine Liquidity Status for each asset on this specific projection day
+        let liquidAssetsFromHoldings = 0;
         let lockedAssets = 0;
+        const lockedDetailsList: { name: string; value: number; reason: string }[] = [];
 
-        currentAccountHoldings.forEach(h => {
-            let val = 0;
-            if (h.isExternal) {
-                val = (h.externalNav || 0) * h.shares;
-            } else {
-                const f = MOCK_FUNDS.find(fund => fund.id === h.fundId);
-                if (f) val = f.nav * h.shares;
-            }
-
+        holdingsWithArrival.forEach(h => {
             // Subtract redeemed amount
             const redeemed = redeemedAmounts.get(h.uniqueKey) || 0;
-            const remainingVal = Math.max(0, val - redeemed);
+            const remainingVal = Math.max(0, h.value - redeemed);
 
             if (remainingVal > 0) {
-                const isPeriodic = h.redemptionRule && h.redemptionRule.ruleType === 'MONTHLY';
-                if (isPeriodic) {
-                    // If today is the specific monthly open day, it's considered 'liquid' (redeemable)
-                    // Otherwise locked.
-                    if (h.redemptionRule?.openDay && date.getDate() === h.redemptionRule.openDay) {
-                        liquidAssets += remainingVal;
-                    } else {
-                        lockedAssets += remainingVal;
-                    }
+                // Check if the funds have arrived by this projected date
+                // Logic: T+N arrival means funds are available on Day N.
+                // So if projectedDate >= arrivalDate, it is Liquid.
+                if (date.getTime() >= h.arrivalDate.getTime()) {
+                    liquidAssetsFromHoldings += remainingVal;
                 } else {
-                    // Standard assets always considered liquid in this view (non-locked)
-                    liquidAssets += remainingVal;
+                    lockedAssets += remainingVal;
+                    
+                    const diffTime = h.arrivalDate.getTime() - date.getTime();
+                    const daysUntilArrival = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    let reason = `再需等待 ${daysUntilArrival} 天`;
+                    if (h.redemptionRule?.ruleType === 'MONTHLY') {
+                         reason = `非开放期 (每月${h.redemptionRule.openDay}日)`;
+                         // If it's just settlement waiting period
+                         if (daysUntilArrival <= h.redemptionRule.settlementDays) {
+                             reason = `赎回结算中 (T+${h.redemptionRule.settlementDays})`;
+                         }
+                    } else {
+                         reason = `赎回结算中 (T+${daysUntilArrival})`;
+                    }
+    
+                    lockedDetailsList.push({
+                        name: h.displayName || '未知资产',
+                        value: remainingVal,
+                        reason: reason
+                    });
                 }
             }
         });
 
+        // Sort details by value desc
+        lockedDetailsList.sort((a, b) => b.value - a.value);
+
         data.push({
             date: dateStr, 
             displayDate: displayDate,
-            liquid: currentCash + liquidAssets, // Positive Stack 1
-            locked: lockedAssets,             // Positive Stack 2
-            expense: -outflow,                // Negative Bar
-            rawExpense: outflow
+            liquid: currentCash + liquidAssetsFromHoldings, // Cash + Settled Assets
+            locked: lockedAssets, // Assets still in waiting period
+            expense: -outflow,
+            rawExpense: outflow,
+            lockedBreakdown: lockedDetailsList
         });
     }
     return data;
   }, [portfolio, cashFlows, liquidityData, selectedAccountId, currentAccountHoldings]);
 
-  const specificDateProjection = useMemo(() => {
-      if (!targetDate) return null;
-      return projectionData.find(p => p.date === targetDate);
-  }, [targetDate, projectionData]);
-
   const lockedDetails = useMemo(() => {
     const list: { name: string; value: number; reason: string }[] = [];
     const today = new Date();
+    today.setHours(0,0,0,0);
 
     const accountsToAnalyze =
       selectedAccountId === 'ALL'
@@ -1774,12 +1811,16 @@ const LiquidityPage: React.FC<{
           }
         }
 
+        // Calculate arrival based on TODAY
         const availableDate = calculateAvailabilityDate(today, h, type);
-        const diffTime = availableDate.getTime() - today.getTime();
-        const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        availableDate.setHours(0,0,0,0);
 
-        if (days >= 1) {
-             let reason = `约T+${days}`;
+        // If today is NOT >= availableDate, then it's Locked
+        if (today.getTime() < availableDate.getTime()) {
+             const diffTime = availableDate.getTime() - today.getTime();
+             const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+             let reason = `预计T+${days}可用`;
              if (h.redemptionRule?.ruleType === 'MONTHLY') {
                  reason = `每月${h.redemptionRule.openDay}日开放`;
              }
@@ -1913,6 +1954,60 @@ const LiquidityPage: React.FC<{
   const currentLocked = liquidityData['Total'] - currentAvailable;
   const totalProjectedExpense = useMemo(() => projectionData.reduce((sum, p) => sum + (p.rawExpense || 0), 0), [projectionData]);
 
+  // Custom Tooltip Component for Chart
+  const CustomChartTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const liquid = data.liquid;
+      const locked = data.locked;
+      const expense = Math.abs(data.rawExpense);
+      const lockedBreakdown = data.lockedBreakdown || [];
+
+      return (
+        <div className="bg-white rounded-xl shadow-xl border border-gray-100 p-4 min-w-[280px] text-sm">
+             <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-50">
+                <span className="font-bold text-gray-900">{label} (日期)</span>
+                <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">预测详情</span>
+            </div>
+            <div className="space-y-3">
+                 <div className="flex justify-between items-center">
+                     <span className="text-gray-500 flex items-center gap-1"><div className="w-2 h-2 bg-indigo-600 rounded-full"></div>可用流动性</span>
+                     <span className="font-mono font-bold text-gray-900">¥ {liquid.toLocaleString()}</span>
+                 </div>
+                 
+                 <div className="flex flex-col gap-1">
+                     <div className="flex justify-between items-center">
+                         <span className="text-gray-500 flex items-center gap-1"><div className="w-2 h-2 bg-slate-300 rounded-full"></div>锁定流动性</span>
+                         <span className="font-mono font-medium text-gray-600">¥ {locked.toLocaleString()}</span>
+                     </div>
+                     {lockedBreakdown.length > 0 && (
+                         <div className="bg-gray-50 rounded p-2 mt-1 space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar border border-gray-100">
+                             {lockedBreakdown.map((item: any, idx: number) => (
+                                 <div key={idx} className="flex justify-between items-start text-xs">
+                                     <span className="text-gray-600 truncate max-w-[120px]" title={item.name}>{item.name}</span>
+                                     <div className="text-right">
+                                         <div className="font-mono text-gray-700">¥{(item.value/10000).toFixed(1)}万</div>
+                                         <div className="text-[10px] text-gray-400 scale-90 origin-right">{item.reason}</div>
+                                     </div>
+                                 </div>
+                             ))}
+                         </div>
+                     )}
+                 </div>
+
+                 {expense > 0 && (
+                    <div className="flex justify-between items-center pt-2 border-t border-gray-50 text-red-600">
+                        <span className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-full"></div>当日支出</span>
+                        <span className="font-mono font-bold">- ¥ {expense.toLocaleString()}</span>
+                    </div>
+                 )}
+            </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -2012,7 +2107,7 @@ const LiquidityPage: React.FC<{
                         </h3>
                         <div className="flex items-center gap-2 text-sm text-gray-500">
                             <span className="flex items-center gap-1"><div className="w-3 h-3 bg-indigo-600 rounded-sm"></div> 可用资金</span>
-                            <span className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-300 rounded-sm"></div> 封闭期资产</span>
+                            <span className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-300 rounded-sm"></div> 锁定流动性</span>
                             <span className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> 预计支出</span>
                         </div>
                     </div>
@@ -2024,14 +2119,7 @@ const LiquidityPage: React.FC<{
                                 <YAxis tick={{fontSize: 10}} tickLine={false} axisLine={false}/>
                                 <RechartsTooltip 
                                     cursor={{fill: '#f8fafc'}}
-                                    contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
-                                    formatter={(value: any, name: any) => {
-                                        const valNum = Math.abs(Number(value));
-                                        if (name === 'locked') return [`¥${valNum.toLocaleString()}`, '锁定流动性 (封闭期)'];
-                                        if (name === 'liquid') return [`¥${valNum.toLocaleString()}`, '可用流动性'];
-                                        if (name === 'expense') return [`¥${valNum.toLocaleString()}`, '预计支出'];
-                                        return [value, name];
-                                    }}
+                                    content={<CustomChartTooltip />}
                                 />
                                 <ReferenceLine y={0} stroke="#94a3b8" />
                                 <Bar dataKey="liquid" stackId="a" fill="#4f46e5" radius={[4, 4, 0, 0]} />
