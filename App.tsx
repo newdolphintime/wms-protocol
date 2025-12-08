@@ -2314,34 +2314,71 @@ const LiquidityPage: React.FC<{
                         <h3 className="font-bold text-gray-900">资产流动性配置</h3>
                     </div>
                     <div className="max-h-[600px] overflow-y-auto divide-y divide-gray-100">
-                        {currentAccountHoldings.map((h, idx) => (
-                            <div key={idx} className="p-4 hover:bg-gray-50">
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <div className="font-medium text-gray-900 text-sm">{h.displayName}</div>
-                                        <div className="text-xs text-gray-500 mt-0.5">
-                                            {h.isExternal ? '外部资产' : '公募基金'} · {h.redemptionRule ? (h.redemptionRule.ruleType === 'MONTHLY' ? '定期开放' : '每日开放') : '默认规则'}
+                        {currentAccountHoldings.map((h, idx) => {
+                            let nav = 0;
+                            let navDate = '';
+                            
+                            if (h.isExternal) {
+                                nav = h.externalNav || 0;
+                                navDate = h.externalNavDate || '未知日期';
+                            } else {
+                                const f = MOCK_FUNDS.find(fund => fund.id === h.fundId);
+                                if (f) {
+                                    nav = f.nav;
+                                    navDate = new Date().toISOString().split('T')[0];
+                                }
+                            }
+                            const amount = nav * h.shares;
+
+                            return (
+                                <div key={idx} className="p-4 hover:bg-gray-50">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <div className="font-medium text-gray-900 text-sm">{h.displayName}</div>
+                                            <div className="text-xs text-gray-500 mt-0.5">
+                                                {h.isExternal ? '外部资产' : '公募基金'} · {h.redemptionRule ? (h.redemptionRule.ruleType === 'MONTHLY' ? '定期开放' : '每日开放') : '默认规则'}
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => openRuleModal(h.accountId, (h as any).originalIndex, h.displayName || '', h.redemptionRule)}
+                                            className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded"
+                                        >
+                                            <Settings className="w-4 h-4"/>
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-2 text-xs mb-2 bg-gray-50/50 p-2 rounded border border-gray-100">
+                                        <div>
+                                            <span className="text-gray-500 block">持有份额</span>
+                                            <span className="font-mono text-gray-700">{h.shares.toLocaleString()}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-500 block">持仓金额</span>
+                                            <span className="font-mono font-medium text-gray-900">¥{(amount/10000).toFixed(2)}万</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-500 block">最新净值</span>
+                                            <span className="font-mono text-gray-700">{nav.toFixed(4)}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-500 block">净值日期</span>
+                                            <span className="font-mono text-gray-700">{navDate}</span>
                                         </div>
                                     </div>
-                                    <button 
-                                        onClick={() => openRuleModal(h.accountId, (h as any).originalIndex, h.displayName || '', h.redemptionRule)}
-                                        className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded"
-                                    >
-                                        <Settings className="w-4 h-4"/>
-                                    </button>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs">
-                                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
-                                        T+{h.redemptionRule?.settlementDays ?? getSettlementDays(h.isExternal ? (h.externalType ? getLiquidityTier(h.externalType) : LiquidityTier.MEDIUM) : (h.fundId ? getLiquidityTier(MOCK_FUNDS.find(f=>f.id===h.fundId)?.type!) : LiquidityTier.MEDIUM))}
-                                    </span>
-                                    {h.redemptionRule?.ruleType === 'MONTHLY' && (
-                                        <span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100">
-                                            每月{h.redemptionRule.openDay}日开放
+
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                            T+{h.redemptionRule?.settlementDays ?? getSettlementDays(h.isExternal ? (h.externalType ? getLiquidityTier(h.externalType) : LiquidityTier.MEDIUM) : (h.fundId ? getLiquidityTier(MOCK_FUNDS.find(f=>f.id===h.fundId)?.type!) : LiquidityTier.MEDIUM))}
                                         </span>
-                                    )}
+                                        {h.redemptionRule?.ruleType === 'MONTHLY' && (
+                                            <span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100">
+                                                每月{h.redemptionRule.openDay}日开放
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </div>
