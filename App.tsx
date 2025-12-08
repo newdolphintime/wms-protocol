@@ -1735,26 +1735,21 @@ const LiquidityPage: React.FC<{
             const remainingVal = Math.max(0, h.value - redeemed);
 
             if (remainingVal > 0) {
-                // Check if the funds have arrived by this projected date
-                // Logic: T+N arrival means funds are available on Day N.
-                // So if projectedDate >= arrivalDate, it is Liquid.
-                if (date.getTime() >= h.arrivalDate.getTime()) {
+                const isPeriodic = h.redemptionRule?.ruleType === 'MONTHLY';
+
+                // Logic update: Periodic assets do not auto-unlock.
+                if (!isPeriodic && date.getTime() >= h.arrivalDate.getTime()) {
                     liquidAssetsFromHoldings += remainingVal;
                 } else {
                     lockedAssets += remainingVal;
                     
-                    const diffTime = h.arrivalDate.getTime() - date.getTime();
-                    const daysUntilArrival = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    let reason = `再需等待 ${daysUntilArrival} 天`;
-                    if (h.redemptionRule?.ruleType === 'MONTHLY') {
-                         reason = `非开放期 (每月${h.redemptionRule.openDay}日)`;
-                         // If it's just settlement waiting period
-                         if (daysUntilArrival <= h.redemptionRule.settlementDays) {
-                             reason = `赎回结算中 (T+${daysUntilArrival})`;
-                         }
+                    let reason = "";
+                    if (isPeriodic) {
+                         reason = `非开放期 (每月${h.redemptionRule?.openDay}日)`;
                     } else {
-                         reason = `赎回结算中 (T+${daysUntilArrival})`;
+                        const diffTime = h.arrivalDate.getTime() - date.getTime();
+                        const daysUntilArrival = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        reason = `赎回结算中 (T+${Math.max(0, daysUntilArrival)})`;
                     }
     
                     lockedDetailsList.push({
@@ -1870,11 +1865,31 @@ const LiquidityPage: React.FC<{
       // Capture the selected product ID (uniqueKey) for linking
       const relatedKey = (planCategory === 'REDEMPTION' || planCategory === 'DIVIDEND') ? selectedProductId : undefined;
 
+      // Settlement delay logic
+      let settlementDays = 0;
+
       if (planCategory === 'REDEMPTION' && selectedHoldingData) {
           // Calculate amount based on shares and current nav
           finalAmount = Number(planShares) * selectedHoldingData.currentNav;
           finalDesc = `[赎回] ${selectedHoldingData.displayName} (${planShares}份)`;
           finalType = 'INFLOW';
+
+          // Determine settlement days
+          if (selectedHoldingData.redemptionRule) {
+             settlementDays = selectedHoldingData.redemptionRule.settlementDays;
+          } else {
+             // Fallback default logic
+             let type = FundType.STRATEGY;
+             if (selectedHoldingData.isExternal) {
+                 type = selectedHoldingData.externalType || FundType.STRATEGY;
+             } else {
+                 const f = MOCK_FUNDS.find(fund => fund.id === selectedHoldingData.fundId);
+                 if (f) type = f.type;
+             }
+             const tier = getLiquidityTier(type);
+             settlementDays = getSettlementDays(tier);
+          }
+
       } else if (planCategory === 'DIVIDEND' && selectedHoldingData) {
           finalAmount = Number(planAmount);
           finalDesc = `[分红] ${selectedHoldingData.displayName}`;
@@ -1886,6 +1901,16 @@ const LiquidityPage: React.FC<{
       } else {
           finalAmount = Number(planAmount);
       }
+
+      // Helper to shift date
+      const shiftDate = (baseDateStr: string, days: number) => {
+          if (days === 0) return baseDateStr;
+          const d = new Date(baseDateStr);
+          d.setDate(d.getDate() + days);
+          return d.toISOString().split('T')[0];
+      };
+      
+      const descriptionWithDelay = settlementDays > 0 ? `${finalDesc} (预计T+${settlementDays}到账)` : finalDesc;
 
       const newFlows: CashFlow[] = [];
       const ruleId = isRecurring ? Date.now().toString() : undefined;
@@ -1904,11 +1929,16 @@ const LiquidityPage: React.FC<{
               } else if (recurFrequency === Frequency.YEARLY) {
                   current.setFullYear(current.getFullYear() + i);
               }
+              
+              const baseDateStr = `${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}-${String(current.getDate()).padStart(2,'0')}`;
+              // Apply settlement delay to effective cash flow date
+              const effectiveDate = shiftDate(baseDateStr, settlementDays);
+
               newFlows.push({
                   id: `${ruleId}_${i}`,
-                  date: `${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}-${String(current.getDate()).padStart(2,'0')}`,
+                  date: effectiveDate,
                   amount: Number(finalAmount),
-                  description: finalDesc,
+                  description: descriptionWithDelay,
                   type: finalType,
                   recurringRuleId: ruleId,
                   relatedHoldingKey: relatedKey
@@ -1916,11 +1946,14 @@ const LiquidityPage: React.FC<{
           }
       } else {
           // Single
+          // Apply settlement delay to effective cash flow date
+          const effectiveDate = shiftDate(planDate, settlementDays);
+
           newFlows.push({
               id: Date.now().toString(),
-              date: planDate,
+              date: effectiveDate,
               amount: Number(finalAmount),
-              description: finalDesc,
+              description: descriptionWithDelay,
               type: finalType,
               relatedHoldingKey: relatedKey
           });
