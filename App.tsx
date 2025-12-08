@@ -1746,6 +1746,50 @@ const LiquidityPage: React.FC<{
       return projectionData.find(p => p.date === targetDate);
   }, [targetDate, projectionData]);
 
+  const lockedDetails = useMemo(() => {
+    const list: { name: string; value: number; reason: string }[] = [];
+    const today = new Date();
+
+    const accountsToAnalyze =
+      selectedAccountId === 'ALL'
+        ? portfolio.accounts
+        : portfolio.accounts.filter((a) => a.id === selectedAccountId);
+
+    accountsToAnalyze.forEach((account) => {
+      account.holdings.forEach((h) => {
+        let val = 0;
+        let type = FundType.STRATEGY;
+        let name = '';
+
+        if (h.isExternal) {
+          val = (h.externalNav || 0) * h.shares;
+          type = h.externalType || FundType.STRATEGY;
+          name = h.externalName || '未命名资产';
+        } else {
+          const f = MOCK_FUNDS.find((fund) => fund.id === h.fundId);
+          if (f) {
+            val = f.nav * h.shares;
+            type = f.type;
+            name = f.name;
+          }
+        }
+
+        const availableDate = calculateAvailabilityDate(today, h, type);
+        const diffTime = availableDate.getTime() - today.getTime();
+        const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (days > 1) {
+             let reason = `约T+${days}`;
+             if (h.redemptionRule?.ruleType === 'MONTHLY') {
+                 reason = `每月${h.redemptionRule.openDay}日开放`;
+             }
+             list.push({ name, value: val, reason });
+        }
+      });
+    });
+    return list.sort((a, b) => b.value - a.value);
+  }, [portfolio, selectedAccountId]);
+
   // --- Health Metrics Calculation ---
   const healthMetrics = useMemo(() => {
       const currentCash = liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH];
@@ -1864,6 +1908,11 @@ const LiquidityPage: React.FC<{
       }
   };
 
+  // Derived values for summary cards
+  const currentAvailable = liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH];
+  const currentLocked = liquidityData['Total'] - currentAvailable;
+  const totalProjectedExpense = useMemo(() => projectionData.reduce((sum, p) => sum + (p.rawExpense || 0), 0), [projectionData]);
+
   return (
     <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -1880,12 +1929,52 @@ const LiquidityPage: React.FC<{
 
         {/* Overview Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between relative group cursor-help transition-shadow hover:shadow-md">
                 <div>
-                    <div className="text-sm text-gray-500 mb-1">当前现金储备 (T+0/1)</div>
-                    <div className="text-2xl font-bold text-gray-900 font-mono">¥ {(liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH]).toLocaleString()}</div>
+                    <div className="text-sm text-gray-500 mb-1 flex items-center gap-1">
+                        当前现金储备 (T+0/1)
+                        <Info className="w-3.5 h-3.5 text-gray-400" />
+                    </div>
+                    <div className="text-2xl font-bold text-gray-900 font-mono">¥ {currentAvailable.toLocaleString()}</div>
                 </div>
                 <div className="p-3 bg-green-50 rounded-full text-green-600"><Wallet className="w-6 h-6"/></div>
+                
+                {/* Floating Detail Window */}
+                <div className="absolute top-full left-0 mt-4 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-30 hidden group-hover:block">
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-50">
+                        <span className="font-bold text-sm text-gray-900">资金构成明细</span>
+                        <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">实时</span>
+                    </div>
+                    <div className="space-y-3">
+                         <div className="flex justify-between items-center text-sm">
+                             <span className="text-gray-500">可用流动性</span>
+                             <span className="font-mono font-bold text-gray-900">¥ {currentAvailable.toLocaleString()}</span>
+                         </div>
+                         <div className="flex flex-col gap-1">
+                             <div className="flex justify-between items-center text-sm">
+                                 <span className="text-gray-500">锁定流动性</span>
+                                 <span className="font-mono font-medium text-gray-600">¥ {currentLocked.toLocaleString()}</span>
+                             </div>
+                             {lockedDetails.length > 0 && (
+                                 <div className="bg-gray-50 rounded p-2 mt-1 space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar">
+                                     {lockedDetails.map((item, idx) => (
+                                         <div key={idx} className="flex justify-between items-start text-xs">
+                                             <span className="text-gray-600 truncate max-w-[100px]" title={item.name}>{item.name}</span>
+                                             <div className="text-right">
+                                                 <div className="font-mono text-gray-700">¥{(item.value/10000).toFixed(1)}万</div>
+                                                 <div className="text-[10px] text-gray-400 scale-90 origin-right">{item.reason}</div>
+                                             </div>
+                                         </div>
+                                     ))}
+                                 </div>
+                             )}
+                         </div>
+                         <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-50 text-red-600">
+                             <span>预计支出 (30天)</span>
+                             <span className="font-mono font-bold">- ¥ {totalProjectedExpense.toLocaleString()}</span>
+                         </div>
+                    </div>
+                </div>
             </div>
             <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
                 <div>
