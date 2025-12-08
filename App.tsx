@@ -1751,7 +1751,7 @@ const LiquidityPage: React.FC<{
                          reason = `非开放期 (每月${h.redemptionRule.openDay}日)`;
                          // If it's just settlement waiting period
                          if (daysUntilArrival <= h.redemptionRule.settlementDays) {
-                             reason = `赎回结算中 (T+${h.redemptionRule.settlementDays})`;
+                             reason = `赎回结算中 (T+${daysUntilArrival})`;
                          }
                     } else {
                          reason = `赎回结算中 (T+${daysUntilArrival})`;
