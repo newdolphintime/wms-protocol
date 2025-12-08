@@ -179,7 +179,7 @@ const TimelineVisualizer: React.FC<{
     );
   };
 
-const FinancialCalendar: React.FC<{ cashFlows: CashFlow[] }> = ({ cashFlows }) => {
+const FinancialCalendar: React.FC<{ cashFlows: CashFlow[], onDelete?: (id: string) => void }> = ({ cashFlows, onDelete }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [selectedDay, setSelectedDay] = useState<number | null>(null);
@@ -274,14 +274,25 @@ const FinancialCalendar: React.FC<{ cashFlows: CashFlow[] }> = ({ cashFlows }) =
                     ) : (
                         <div className="space-y-1 max-h-[80px] overflow-y-auto">
                             {selectedFlows.map(f => (
-                                <div key={f.id} className="flex justify-between items-center text-[10px] bg-gray-50 p-1.5 rounded">
+                                <div key={f.id} className="flex justify-between items-center text-[10px] bg-gray-50 p-1.5 rounded group">
                                     <div className="flex items-center gap-1 overflow-hidden">
                                         {f.recurringRuleId && <Repeat className="w-3 h-3 text-indigo-500 shrink-0"/>}
                                         <span className="truncate max-w-[80px]" title={f.description}>{f.description}</span>
                                     </div>
-                                    <span className={f.type === 'INFLOW' ? 'text-green-600' : 'text-red-600'}>
-                                        {f.type === 'INFLOW' ? '+' : '-'}¥{(f.amount/10000).toFixed(1)}万
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={f.type === 'INFLOW' ? 'text-green-600' : 'text-red-600'}>
+                                            {f.type === 'INFLOW' ? '+' : '-'}¥{(f.amount/10000).toFixed(1)}万
+                                        </span>
+                                        {onDelete && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); onDelete(f.id); }} 
+                                                className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="删除"
+                                            >
+                                                <Trash2 className="w-3 h-3"/>
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -1522,6 +1533,7 @@ const LiquidityPage: React.FC<{
   // Planning Form State
   const [planCategory, setPlanCategory] = useState<'GENERIC'|'REDEMPTION'|'DIVIDEND'|'INSURANCE'>('GENERIC');
   const [planAmount, setPlanAmount] = useState('');
+  const [planShares, setPlanShares] = useState('');
   const [planDate, setPlanDate] = useState('');
   const [planDesc, setPlanDesc] = useState('');
   const [planType, setPlanType] = useState<'INFLOW'|'OUTFLOW'>('OUTFLOW');
@@ -1556,6 +1568,26 @@ const LiquidityPage: React.FC<{
         };
     }));
   }, [portfolio, selectedAccountId]);
+
+  // Helper for selected product details
+  const selectedHoldingData = useMemo(() => {
+    if (!selectedProductId) return null;
+    const holding = currentAccountHoldings.find(h => h.uniqueKey === selectedProductId);
+    if (!holding) return null;
+
+    let nav = 0;
+    let navDate = new Date().toISOString().split('T')[0]; // Default to today for internal
+
+    if (holding.isExternal) {
+        nav = holding.externalNav || 0;
+        navDate = holding.externalNavDate || navDate;
+    } else {
+        const fund = MOCK_FUNDS.find(f => f.id === holding.fundId);
+        nav = fund?.nav || 0;
+    }
+    
+    return { ...holding, currentNav: nav, currentNavDate: navDate };
+  }, [selectedProductId, currentAccountHoldings]);
 
   // Validation Logic for Redemption
   useEffect(() => {
@@ -1653,9 +1685,6 @@ const LiquidityPage: React.FC<{
 
         // Update cumulative redemptions based on flows happening TODAY
         // So that subsequent days reflect the reduced asset value.
-        // For the chart of "Today", we probably want to show the state at the End of Day or Start?
-        // Let's assume End of Day for Cash, but for Asset value, if I redeem today, it turns to cash.
-        // If I redeem today, asset goes down, cash goes up.
         
         dailyFlows.forEach(f => {
             if (f.relatedHoldingKey && f.type === 'INFLOW') {
@@ -1742,25 +1771,35 @@ const LiquidityPage: React.FC<{
   }, [liquidityData, monthlyExpenses, projectionData]);
 
   const addCashFlow = () => {
-      if (!planAmount || !planDate) return;
+      // Input Validation
+      if (planCategory === 'REDEMPTION') {
+        if (!planShares || !planDate) return;
+      } else {
+        if (!planAmount || !planDate) return;
+      }
       if (validationError) return; // Block if error
 
+      let finalAmount = 0;
       let finalDesc = planDesc;
       let finalType = planType;
       // Capture the selected product ID (uniqueKey) for linking
       const relatedKey = (planCategory === 'REDEMPTION' || planCategory === 'DIVIDEND') ? selectedProductId : undefined;
 
-      if (planCategory === 'REDEMPTION' && selectedProductId) {
-          const product = currentAccountHoldings.find(p => p.uniqueKey === selectedProductId);
-          finalDesc = `[赎回] ${product?.displayName || '未知产品'}`;
+      if (planCategory === 'REDEMPTION' && selectedHoldingData) {
+          // Calculate amount based on shares and current nav
+          finalAmount = Number(planShares) * selectedHoldingData.currentNav;
+          finalDesc = `[赎回] ${selectedHoldingData.displayName} (${planShares}份)`;
           finalType = 'INFLOW';
-      } else if (planCategory === 'DIVIDEND' && selectedProductId) {
-          const product = currentAccountHoldings.find(p => p.uniqueKey === selectedProductId);
-          finalDesc = `[分红] ${product?.displayName || '未知产品'}`;
+      } else if (planCategory === 'DIVIDEND' && selectedHoldingData) {
+          finalAmount = Number(planAmount);
+          finalDesc = `[分红] ${selectedHoldingData.displayName}`;
           finalType = 'INFLOW';
       } else if (planCategory === 'INSURANCE') {
+          finalAmount = Number(planAmount);
           finalDesc = `[保单] ${insuranceName}`;
           finalType = 'OUTFLOW';
+      } else {
+          finalAmount = Number(planAmount);
       }
 
       const newFlows: CashFlow[] = [];
@@ -1783,7 +1822,7 @@ const LiquidityPage: React.FC<{
               newFlows.push({
                   id: `${ruleId}_${i}`,
                   date: `${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}-${String(current.getDate()).padStart(2,'0')}`,
-                  amount: Number(planAmount),
+                  amount: Number(finalAmount),
                   description: finalDesc,
                   type: finalType,
                   recurringRuleId: ruleId,
@@ -1795,7 +1834,7 @@ const LiquidityPage: React.FC<{
           newFlows.push({
               id: Date.now().toString(),
               date: planDate,
-              amount: Number(planAmount),
+              amount: Number(finalAmount),
               description: finalDesc,
               type: finalType,
               relatedHoldingKey: relatedKey
@@ -1804,9 +1843,14 @@ const LiquidityPage: React.FC<{
       setCashFlows([...cashFlows, ...newFlows]);
       // Reset form
       setPlanAmount('');
+      setPlanShares('');
       setPlanDate('');
       setPlanDesc('');
       setIsRecurring(false);
+  };
+
+  const handleDeleteCashFlow = (id: string) => {
+      setCashFlows(current => current.filter(item => item.id !== id));
   };
 
   const openRuleModal = (accId: string, hIdx: number, hName: string, rule?: RedemptionRule) => {
@@ -1946,17 +1990,54 @@ const LiquidityPage: React.FC<{
                                      )}
                                  </div>
                              )}
+                             
+                             {planCategory === 'REDEMPTION' ? (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">
+                                            赎回份额 <span className="text-gray-400">(持有: {selectedHoldingData?.shares ?? 0}份)</span>
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            value={planShares} 
+                                            onChange={e => setPlanShares(e.target.value)} 
+                                            className="w-full text-sm border-gray-300 rounded-md"
+                                            placeholder="请输入份额"
+                                        />
+                                    </div>
+                                    
+                                    {selectedHoldingData && (
+                                         <div className="bg-indigo-50/50 border border-indigo-100 p-3 rounded-lg space-y-2">
+                                            <div className="flex justify-between text-xs text-gray-600">
+                                                <span>最新净值 ({selectedHoldingData.currentNavDate})</span>
+                                                <span className="font-mono font-medium">{selectedHoldingData.currentNav.toFixed(4)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center border-t border-indigo-100 pt-2">
+                                                <span className="text-xs font-bold text-indigo-900">预计赎回金额</span>
+                                                <span className="text-sm font-bold text-indigo-700 font-mono">
+                                                    ¥ {((Number(planShares) || 0) * selectedHoldingData.currentNav).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                </span>
+                                            </div>
+                                         </div>
+                                    )}
 
-                             <div className="grid grid-cols-2 gap-4">
-                                 <div>
-                                     <label className="block text-xs text-gray-500 mb-1">金额</label>
-                                     <input type="number" value={planAmount} onChange={e => setPlanAmount(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
-                                 </div>
-                                 <div>
-                                     <label className="block text-xs text-gray-500 mb-1">发生日期</label>
-                                     <input type="date" value={planDate} onChange={e => setPlanDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
-                                 </div>
-                             </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">发生日期</label>
+                                        <input type="date" value={planDate} onChange={e => setPlanDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
+                                    </div>
+                                </div>
+                             ) : (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">金额</label>
+                                        <input type="number" value={planAmount} onChange={e => setPlanAmount(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">发生日期</label>
+                                        <input type="date" value={planDate} onChange={e => setPlanDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
+                                    </div>
+                                </div>
+                             )}
 
                              <div className="border-t border-gray-100 pt-3">
                                 <div className="flex items-center gap-2 mb-2">
@@ -1989,8 +2070,62 @@ const LiquidityPage: React.FC<{
                          </div>
                          {/* Right: Calendar View */}
                          <div className="bg-white rounded-lg border border-gray-200 h-[300px] p-2">
-                             <FinancialCalendar cashFlows={cashFlows} />
+                             <FinancialCalendar cashFlows={cashFlows} onDelete={handleDeleteCashFlow} />
                          </div>
+                     </div>
+
+                     {/* Cash Flow List Table */}
+                     <div className="mt-6 border-t border-gray-100 pt-4">
+                        <div className="flex justify-between items-center mb-3">
+                            <h4 className="text-sm font-bold text-gray-900">规划资金明细</h4>
+                            <span className="text-xs text-gray-500">共 {cashFlows.length} 条记录</span>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                            <div className="max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
+                                {cashFlows.length === 0 ? (
+                                    <div className="p-8 text-center text-gray-400 text-xs">
+                                        暂无资金规划记录，请在上方添加
+                                    </div>
+                                ) : (
+                                    <table className="min-w-full divide-y divide-gray-100">
+                                        <thead className="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">日期</th>
+                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">类型</th>
+                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">说明</th>
+                                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">金额</th>
+                                                <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 bg-white">
+                                            {cashFlows.sort((a,b) => a.date.localeCompare(b.date)).map(flow => (
+                                                <tr key={flow.id} className="hover:bg-gray-50 transition-colors group">
+                                                    <td className="px-4 py-2 text-xs text-gray-600 font-mono whitespace-nowrap">{flow.date}</td>
+                                                    <td className="px-4 py-2 text-xs">
+                                                        <span className={`px-1.5 py-0.5 rounded border ${flow.type === 'INFLOW' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                                                            {flow.type === 'INFLOW' ? '收入' : '支出'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-2 text-xs text-gray-900 max-w-[200px] truncate" title={flow.description}>{flow.description}</td>
+                                                    <td className={`px-4 py-2 text-xs font-mono font-medium text-right ${flow.type === 'INFLOW' ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {flow.type === 'INFLOW' ? '+' : '-'} {flow.amount.toLocaleString()}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-center">
+                                                        <button 
+                                                            onClick={() => handleDeleteCashFlow(flow.id)}
+                                                            className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-50"
+                                                            title="删除"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                        </div>
                      </div>
                  </div>
             </div>
@@ -2050,41 +2185,44 @@ const App: React.FC = () => {
   const [patchRules, setPatchRules] = useState<PatchRule[]>([]);
   const [portfolio, setPortfolio] = useState<ClientPortfolio>(MOCK_PORTFOLIO);
 
-  const addPatchRule = (rule: PatchRule) => setPatchRules([...patchRules, rule]);
-  const removePatchRule = (id: string) => setPatchRules(patchRules.filter(r => r.id !== id));
+  const addPatchRule = (rule: PatchRule) => {
+    setPatchRules([...patchRules, rule]);
+  };
+
+  const removePatchRule = (id: string) => {
+    setPatchRules(patchRules.filter(r => r.id !== id));
+  };
 
   const addExternalAsset = (accountId: string, holding: Holding) => {
       const newPortfolio = { ...portfolio };
       const account = newPortfolio.accounts.find(a => a.id === accountId);
       if (account) {
-          account.holdings.push(holding);
+          // Clone account and holdings to trigger update
+          const newAccount = { ...account, holdings: [...account.holdings, holding] };
+          newPortfolio.accounts = newPortfolio.accounts.map(a => a.id === accountId ? newAccount : a);
           setPortfolio(newPortfolio);
       }
   };
 
   const updateHoldingRule = (accId: string, holdingIdx: number, rule: RedemptionRule) => {
-      setPortfolio(prev => {
-          const newAccounts = prev.accounts.map(acc => {
-              if (acc.id === accId) {
-                  const newHoldings = [...acc.holdings];
-                  if (newHoldings[holdingIdx]) {
-                      newHoldings[holdingIdx] = { ...newHoldings[holdingIdx], redemptionRule: rule };
-                  }
-                  return { ...acc, holdings: newHoldings };
-              }
-              return acc;
-          });
-          return { ...prev, accounts: newAccounts };
-      });
-  };
-
-  const updateAccountCash = (accId: string, amount: number) => {
       const newPortfolio = { ...portfolio };
       const account = newPortfolio.accounts.find(a => a.id === accId);
-      if (account) {
-          account.cashBalance = amount;
+      if (account && account.holdings[holdingIdx]) {
+          const newAccount = { ...account, holdings: [...account.holdings] };
+          newAccount.holdings[holdingIdx] = { ...newAccount.holdings[holdingIdx], redemptionRule: rule };
+           newPortfolio.accounts = newPortfolio.accounts.map(a => a.id === accId ? newAccount : a);
           setPortfolio(newPortfolio);
       }
+  };
+  
+  const updateAccountCash = (accId: string, amount: number) => {
+       const newPortfolio = { ...portfolio };
+       const account = newPortfolio.accounts.find(a => a.id === accId);
+       if (account) {
+           const newAccount = { ...account, cashBalance: amount };
+           newPortfolio.accounts = newPortfolio.accounts.map(a => a.id === accId ? newAccount : a);
+           setPortfolio(newPortfolio);
+       }
   };
 
   return (
@@ -2092,10 +2230,46 @@ const App: React.FC = () => {
       <Layout>
         <Routes>
           <Route path="/" element={<FundListPage />} />
-          <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={addPatchRule} onRemovePatchRule={removePatchRule} />} />
-          <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={addPatchRule} onRemovePatchRule={removePatchRule} />} />
-          <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio} patchRules={patchRules} onAddExternalAsset={addExternalAsset} />} />
-          <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} updateHoldingRule={updateHoldingRule} updateAccountCash={updateAccountCash} />} />
+          <Route 
+            path="/comparison" 
+            element={
+              <ComparisonPage 
+                patchRules={patchRules} 
+                onAddPatchRule={addPatchRule} 
+                onRemovePatchRule={removePatchRule} 
+              />
+            } 
+          />
+          <Route 
+            path="/fund/:id" 
+            element={
+              <FundDetailPage 
+                patchRules={patchRules} 
+                onAddPatchRule={addPatchRule} 
+                onRemovePatchRule={removePatchRule} 
+              />
+            } 
+          />
+          <Route 
+            path="/portfolio" 
+            element={
+              <PortfolioPage 
+                portfolio={portfolio} 
+                patchRules={patchRules}
+                onAddExternalAsset={addExternalAsset}
+              />
+            } 
+          />
+          <Route 
+            path="/liquidity" 
+            element={
+              <LiquidityPage 
+                portfolio={portfolio}
+                updateHoldingRule={updateHoldingRule}
+                updateAccountCash={updateAccountCash}
+              />
+            } 
+          />
         </Routes>
       </Layout>
     </HashRouter>
