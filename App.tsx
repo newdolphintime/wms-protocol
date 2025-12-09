@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { 
@@ -47,7 +46,8 @@ import {
   Unlock,
   ShieldCheck,
   AlertOctagon,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  BookOpen
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, PieChart, Pie, AreaChart, Area, ComposedChart, ReferenceLine } from 'recharts';
 import { MOCK_FUNDS, MOCK_PORTFOLIO, generateChartData, generateFundHistory, getLiquidityTier, getSettlementDays, calculateAvailabilityDate } from './services/dataService';
@@ -834,6 +834,48 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
     </div>
   );
+};
+
+const LiquidityRulesCard: React.FC = () => {
+    return (
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-indigo-600"/> 流动性测算规则说明
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-start gap-2">
+                        <span className="bg-blue-100 text-blue-700 px-1.5 rounded text-xs font-medium whitespace-nowrap mt-0.5">现金/活期</span>
+                        <span>T+0 实时可用，直接计入可用资金。</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                        <span className="bg-green-100 text-green-700 px-1.5 rounded text-xs font-medium whitespace-nowrap mt-0.5">标准资产</span>
+                        <span>每日开放赎回，在 T+N 结算期结束后计入可用资金。</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                        <span className="bg-amber-100 text-amber-700 px-1.5 rounded text-xs font-medium whitespace-nowrap mt-0.5">定期开放</span>
+                        <span>
+                            非开放期锁定。需在"现金流规划"中手动录入赎回计划，资金将于<span className="font-mono text-gray-800">计划日期 + 结算期</span>后计入可用。
+                        </span>
+                    </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-start gap-2">
+                        <span className="bg-purple-100 text-purple-700 px-1.5 rounded text-xs font-medium whitespace-nowrap mt-0.5">固定期限</span>
+                        <span>到期日自动赎回，资金于<span className="font-mono text-gray-800">到期日 + 结算期</span>后自动计入可用，无需手动操作。</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                        <span className="bg-red-100 text-red-700 px-1.5 rounded text-xs font-medium whitespace-nowrap mt-0.5">锁定期</span>
+                        <span>资产在锁定期截止前不可赎回，解禁后按其开放规则执行。</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                        <span className="bg-gray-100 text-gray-700 px-1.5 rounded text-xs font-medium whitespace-nowrap mt-0.5">赎回结算</span>
+                        <span>所有赎回操作均考虑 T+N 资金在途时间，确保预测真实到账日期。</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const FundListPage: React.FC = () => {
@@ -2476,6 +2518,9 @@ const LiquidityPage: React.FC<{
                         </div>
                      </div>
                  </div>
+
+                 {/* Liquidity Rules Explanation Card */}
+                 <LiquidityRulesCard />
             </div>
 
             {/* Right Sidebar: Asset List & Config */}
