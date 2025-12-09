@@ -215,41 +215,62 @@ export const getSettlementDays = (tier: LiquidityTier): number => {
 };
 
 export const calculateAvailabilityDate = (fromDate: Date, holding: Holding, fundType?: FundType): Date => {
-    const availableDate = new Date(fromDate);
+    // Start with the basic "From Date"
+    let baseDate = new Date(fromDate);
+    baseDate.setHours(0,0,0,0);
     
     // 1. Custom Rule Priority
     if (holding.redemptionRule) {
-        const { ruleType, openDay, settlementDays } = holding.redemptionRule;
+        const { ruleType, openDay, settlementDays, lockupEndDate, maturityDate } = holding.redemptionRule;
+        
+        // Handle FIXED_TERM
+        if (ruleType === 'FIXED_TERM' && maturityDate) {
+             const mDate = new Date(maturityDate);
+             mDate.setHours(0,0,0,0);
+             const targetDate = new Date(mDate);
+             targetDate.setDate(targetDate.getDate() + settlementDays);
+             return targetDate;
+        }
+
+        // Handle Lock-up: If current date is before lockup end, we must wait until lockup ends.
+        if (lockupEndDate) {
+            const lockupDate = new Date(lockupEndDate);
+            lockupDate.setHours(0,0,0,0);
+            if (baseDate.getTime() < lockupDate.getTime()) {
+                baseDate = new Date(lockupDate);
+            }
+        }
         
         if (ruleType === 'MONTHLY' && openDay) {
-            // Check if today is passed the open day
-            let targetDate = new Date(fromDate);
-            // If today's day is >= openDay, we might have missed it? 
-            // Usually if today is 15th and open day is 15th, we can redeem today.
+            // Find next open day AFTER the baseDate
+            const targetDate = new Date(baseDate);
+            
+            // If today is past the open day, move to next month
+            // Note: If today is strictly equal to open day, it counts as open.
             if (targetDate.getDate() > openDay) {
-                // Move to next month
                 targetDate.setMonth(targetDate.getMonth() + 1);
             }
-            // Set to open day
             targetDate.setDate(openDay);
             
             // Add settlement days
             targetDate.setDate(targetDate.getDate() + settlementDays);
             return targetDate;
         } else {
-             // Daily: Just add settlement
-             availableDate.setDate(availableDate.getDate() + settlementDays);
-             return availableDate;
+             // Daily: Just add settlement to the baseDate
+             const targetDate = new Date(baseDate);
+             targetDate.setDate(targetDate.getDate() + settlementDays);
+             return targetDate;
         }
     }
 
-    // 2. Default Tier Logic
+    // 2. Default Tier Logic (No Lockup support in default)
     const type = holding.isExternal ? (holding.externalType || FundType.STRATEGY) : fundType;
     const tier = type ? getLiquidityTier(type) : LiquidityTier.MEDIUM;
     const days = getSettlementDays(tier);
     
-    availableDate.setDate(availableDate.getDate() + days);
-    return availableDate;
+    const targetDate = new Date(baseDate);
+    targetDate.setDate(targetDate.getDate() + days);
+    return targetDate;
 };
 
 // Helper to check if a date is within a patch rule range

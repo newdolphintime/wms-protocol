@@ -48,9 +48,11 @@ export enum AccountType {
 }
 
 export interface RedemptionRule {
-  ruleType: 'DAILY' | 'MONTHLY';
+  ruleType: 'DAILY' | 'MONTHLY' | 'FIXED_TERM';
   openDay?: number; // 1-31 for MONTHLY
   settlementDays: number; // T+N
+  lockupEndDate?: string; // YYYY-MM-DD. If present, asset is locked until this date.
+  maturityDate?: string; // YYYY-MM-DD. For FIXED_TERM, auto-redemption date.
 }
 
 export interface Holding {

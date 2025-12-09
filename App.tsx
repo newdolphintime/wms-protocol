@@ -530,28 +530,49 @@ const LiquidityRuleModal: React.FC<{
     currentRule?: RedemptionRule;
     onSave: (rule: RedemptionRule) => void;
 }> = ({ isOpen, onClose, holdingName, currentRule, onSave }) => {
-    const [ruleType, setRuleType] = useState<'DAILY' | 'MONTHLY'>('DAILY');
+    const [ruleType, setRuleType] = useState<'DAILY' | 'MONTHLY' | 'FIXED_TERM'>('DAILY');
     const [openDay, setOpenDay] = useState<number>(15);
     const [settlementDays, setSettlementDays] = useState<number>(3);
+    const [hasLockup, setHasLockup] = useState(false);
+    const [lockupEndDate, setLockupEndDate] = useState('');
+    const [maturityDate, setMaturityDate] = useState('');
 
     useEffect(() => {
         if (isOpen) {
             setRuleType(currentRule?.ruleType || 'DAILY');
             setOpenDay(currentRule?.openDay || 15);
             setSettlementDays(currentRule?.settlementDays || 3);
+            if (currentRule?.lockupEndDate) {
+                setHasLockup(true);
+                setLockupEndDate(currentRule.lockupEndDate);
+            } else {
+                setHasLockup(false);
+                setLockupEndDate('');
+            }
+            if (currentRule?.maturityDate) {
+                setMaturityDate(currentRule.maturityDate);
+            } else {
+                setMaturityDate('');
+            }
         }
     }, [isOpen, currentRule]);
 
     if (!isOpen) return null;
 
     const handleSave = () => {
-        onSave({ ruleType, openDay: ruleType === 'MONTHLY' ? openDay : undefined, settlementDays });
+        onSave({ 
+            ruleType, 
+            openDay: ruleType === 'MONTHLY' ? openDay : undefined, 
+            settlementDays,
+            lockupEndDate: (hasLockup && ruleType !== 'FIXED_TERM') ? lockupEndDate : undefined,
+            maturityDate: ruleType === 'FIXED_TERM' ? maturityDate : undefined
+        });
         onClose();
     };
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-bold text-gray-900">配置流动性规则</h3>
                     <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
@@ -562,9 +583,12 @@ const LiquidityRuleModal: React.FC<{
                 <div className="space-y-4">
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">开放类型</label>
-                        <div className="flex bg-gray-100 p-1 rounded-lg">
-                            <button onClick={() => setRuleType('DAILY')} className={`flex-1 text-xs py-1.5 font-medium rounded-md transition-all ${ruleType === 'DAILY' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>每日开放 (标准)</button>
-                            <button onClick={() => setRuleType('MONTHLY')} className={`flex-1 text-xs py-1.5 font-medium rounded-md transition-all ${ruleType === 'MONTHLY' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>定期开放 (信托)</button>
+                        <div className="flex flex-col gap-1 bg-gray-100 p-1 rounded-lg">
+                            <div className="flex gap-1">
+                                <button onClick={() => setRuleType('DAILY')} className={`flex-1 text-xs py-1.5 font-medium rounded-md transition-all ${ruleType === 'DAILY' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>每日开放 (标准)</button>
+                                <button onClick={() => setRuleType('MONTHLY')} className={`flex-1 text-xs py-1.5 font-medium rounded-md transition-all ${ruleType === 'MONTHLY' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>定期开放 (信托)</button>
+                            </div>
+                            <button onClick={() => setRuleType('FIXED_TERM')} className={`w-full text-xs py-1.5 font-medium rounded-md transition-all ${ruleType === 'FIXED_TERM' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>类信托/固收 (到期自动赎回)</button>
                         </div>
                     </div>
                     {ruleType === 'MONTHLY' && (
@@ -577,6 +601,13 @@ const LiquidityRuleModal: React.FC<{
                             </div>
                         </div>
                     )}
+                    {ruleType === 'FIXED_TERM' && (
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">到期/终止日</label>
+                            <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/>
+                            <p className="text-[10px] text-gray-500 mt-1">资金将在到期后自动赎回，无需手动操作。</p>
+                        </div>
+                    )}
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">赎回结算周期 (T+N)</label>
                         <div className="flex items-center gap-2">
@@ -585,6 +616,23 @@ const LiquidityRuleModal: React.FC<{
                             <span className="text-sm text-gray-500">天到账</span>
                         </div>
                     </div>
+
+                    {ruleType !== 'FIXED_TERM' && (
+                        <div className="border-t border-gray-100 pt-3">
+                             <div className="flex items-center gap-2 mb-2">
+                                 <input type="checkbox" id="lockupCheck" checked={hasLockup} onChange={e => setHasLockup(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500"/>
+                                 <label htmlFor="lockupCheck" className="text-sm font-medium text-gray-700">配置锁定期 (如持有满N天才可赎回)</label>
+                             </div>
+                             {hasLockup && (
+                                <div className="bg-amber-50 p-2 rounded border border-amber-100">
+                                    <label className="block text-xs font-medium text-amber-800 mb-1">锁定期截止日</label>
+                                    <input type="date" value={lockupEndDate} onChange={e => setLockupEndDate(e.target.value)} className="w-full text-sm border-amber-200 rounded-md focus:ring-amber-500 focus:border-amber-500"/>
+                                    <p className="text-[10px] text-amber-600 mt-1">在此日期前不支持赎回，之后按{ruleType === 'MONTHLY' ? '每月开放' : '每日开放'}规则执行。</p>
+                                </div>
+                             )}
+                        </div>
+                    )}
+
                     <button onClick={handleSave} className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 text-sm font-medium">
                         保存配置
                     </button>
@@ -1593,13 +1641,39 @@ const LiquidityPage: React.FC<{
   useEffect(() => {
     if (planCategory === 'REDEMPTION' && selectedProductId && planDate) {
         const holding = currentAccountHoldings.find(h => h.uniqueKey === selectedProductId);
-        if (holding && holding.redemptionRule && holding.redemptionRule.ruleType === 'MONTHLY') {
-            const dateObj = new Date(planDate);
-            const day = dateObj.getDate();
-            if (day !== holding.redemptionRule.openDay) {
-                 setValidationError(`该产品仅在每月 ${holding.redemptionRule.openDay} 日开放赎回`);
-                 return;
-            }
+        if (holding && holding.redemptionRule) {
+             const dateObj = new Date(planDate);
+             dateObj.setHours(0,0,0,0);
+             
+             // Check Lockup
+             if (holding.redemptionRule.lockupEndDate && holding.redemptionRule.ruleType !== 'FIXED_TERM') {
+                 const lockupEnd = new Date(holding.redemptionRule.lockupEndDate);
+                 lockupEnd.setHours(0,0,0,0);
+                 if (dateObj.getTime() < lockupEnd.getTime()) {
+                     setValidationError(`产品处于锁定期（至${holding.redemptionRule.lockupEndDate}），无法赎回`);
+                     return;
+                 }
+             }
+             
+             // Check Fixed Term (Should not manually redeem fixed term generally, but if forced?)
+             // For now assume standard validation applies if they try.
+             if (holding.redemptionRule.ruleType === 'FIXED_TERM' && holding.redemptionRule.maturityDate) {
+                  const maturity = new Date(holding.redemptionRule.maturityDate);
+                  maturity.setHours(0,0,0,0);
+                  if (dateObj.getTime() < maturity.getTime()) {
+                      setValidationError(`固定期限产品未到期（到期日${holding.redemptionRule.maturityDate}），无法提前赎回`);
+                      return;
+                  }
+             }
+
+             // Check Monthly Open Day
+             if (holding.redemptionRule.ruleType === 'MONTHLY') {
+                const day = dateObj.getDate();
+                if (day !== holding.redemptionRule.openDay) {
+                     setValidationError(`该产品仅在每月 ${holding.redemptionRule.openDay} 日开放赎回`);
+                     return;
+                }
+             }
         }
     }
     setValidationError(null);
@@ -1736,20 +1810,53 @@ const LiquidityPage: React.FC<{
 
             if (remainingVal > 0) {
                 const isPeriodic = h.redemptionRule?.ruleType === 'MONTHLY';
+                const hasLockup = !!h.redemptionRule?.lockupEndDate;
+                const isFixedTerm = h.redemptionRule?.ruleType === 'FIXED_TERM';
 
                 // Logic update: Periodic assets do not auto-unlock.
+                // Fixed Term (Auto Redeem) should auto-unlock when arrival date passed.
+                // Standard (Daily) should auto-unlock when arrival date passed.
+                
+                // So: Unlock if (NOT Periodic OR is Fixed Term) AND date >= arrival
+                // Wait, Fixed Term behaves like Standard in that it has a definite arrival date.
+                // Periodic is the one that stays locked indefinitely until plan.
+                
                 if (!isPeriodic && date.getTime() >= h.arrivalDate.getTime()) {
                     liquidAssetsFromHoldings += remainingVal;
                 } else {
                     lockedAssets += remainingVal;
                     
                     let reason = "";
-                    if (isPeriodic) {
-                         reason = `非开放期 (每月${h.redemptionRule?.openDay}日)`;
-                    } else {
-                        const diffTime = h.arrivalDate.getTime() - date.getTime();
-                        const daysUntilArrival = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        reason = `赎回结算中 (T+${Math.max(0, daysUntilArrival)})`;
+                    const diffTime = h.arrivalDate.getTime() - date.getTime();
+                    const daysUntilArrival = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    // Specific Logic for Reason Text
+                    if (isFixedTerm && h.redemptionRule?.maturityDate) {
+                        reason = `持有至到期 (到期日: ${h.redemptionRule.maturityDate})`;
+                    } else if (hasLockup) {
+                        const lockupEnd = new Date(h.redemptionRule!.lockupEndDate!);
+                        lockupEnd.setHours(0,0,0,0);
+                        if (date.getTime() < lockupEnd.getTime()) {
+                            reason = `处于锁定期 (至 ${h.redemptionRule!.lockupEndDate})`;
+                        }
+                    }
+
+                    if (!reason) {
+                        if (isPeriodic) {
+                             const settlementDays = h.redemptionRule?.settlementDays || 0;
+                             const openDate = new Date(h.arrivalDate);
+                             openDate.setDate(openDate.getDate() - settlementDays);
+                             
+                             if (date.getTime() < openDate.getTime()) {
+                                 // Before open date
+                                 reason = `非开放期 (每月${h.redemptionRule?.openDay}日)`;
+                             } else {
+                                 // After open date, during settlement relative to TODAY's calculation
+                                 reason = `赎回结算中 (T+${Math.max(0, daysUntilArrival)})`;
+                             }
+                        } else {
+                            reason = `赎回结算中 (T+${Math.max(0, daysUntilArrival)})`;
+                        }
                     }
     
                     lockedDetailsList.push({
@@ -1816,8 +1923,39 @@ const LiquidityPage: React.FC<{
              const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
              let reason = `预计T+${days}可用`;
-             if (h.redemptionRule?.ruleType === 'MONTHLY') {
-                 reason = `每月${h.redemptionRule.openDay}日开放`;
+             
+             // Check Fixed Term
+             if (h.redemptionRule?.ruleType === 'FIXED_TERM' && h.redemptionRule.maturityDate) {
+                 reason = `到期自动赎回 (到期日: ${h.redemptionRule.maturityDate})`;
+             }
+             // Check Lockup First
+             else if (h.redemptionRule?.lockupEndDate) {
+                 const lockupEnd = new Date(h.redemptionRule.lockupEndDate);
+                 lockupEnd.setHours(0,0,0,0);
+                 if (today.getTime() < lockupEnd.getTime()) {
+                     reason = `处于锁定期 (至 ${h.redemptionRule.lockupEndDate})`;
+                 } else if (h.redemptionRule?.ruleType === 'MONTHLY') {
+                     // Standard Monthly logic if lockup passed
+                     const settlementDays = h.redemptionRule.settlementDays;
+                     const openDate = new Date(availableDate);
+                     openDate.setDate(openDate.getDate() - settlementDays);
+                     
+                     if (today.getTime() < openDate.getTime()) {
+                         reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`;
+                     } else {
+                         reason = `赎回结算中 (T+${days})`;
+                     }
+                 }
+             } else if (h.redemptionRule?.ruleType === 'MONTHLY') {
+                 const settlementDays = h.redemptionRule.settlementDays;
+                 const openDate = new Date(availableDate);
+                 openDate.setDate(openDate.getDate() - settlementDays);
+                 
+                 if (today.getTime() < openDate.getTime()) {
+                     reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`;
+                 } else {
+                     reason = `赎回结算中 (T+${days})`;
+                 }
              }
              list.push({ name, value: val, reason });
         }
@@ -2369,7 +2507,7 @@ const LiquidityPage: React.FC<{
                                         <div>
                                             <div className="font-medium text-gray-900 text-sm">{h.displayName}</div>
                                             <div className="text-xs text-gray-500 mt-0.5">
-                                                {h.isExternal ? '外部资产' : '公募基金'} · {h.redemptionRule ? (h.redemptionRule.ruleType === 'MONTHLY' ? '定期开放' : '每日开放') : '默认规则'}
+                                                {h.isExternal ? '外部资产' : '公募基金'} · {h.redemptionRule ? (h.redemptionRule.ruleType === 'MONTHLY' ? '定期开放' : (h.redemptionRule.ruleType === 'FIXED_TERM' ? '到期自动赎回' : '每日开放')) : '默认规则'}
                                             </div>
                                         </div>
                                         <button 
@@ -2406,6 +2544,11 @@ const LiquidityPage: React.FC<{
                                         {h.redemptionRule?.ruleType === 'MONTHLY' && (
                                             <span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100">
                                                 每月{h.redemptionRule.openDay}日开放
+                                            </span>
+                                        )}
+                                        {h.redemptionRule?.ruleType === 'FIXED_TERM' && (
+                                            <span className="bg-purple-50 px-1.5 py-0.5 rounded text-purple-700 border border-purple-100">
+                                                {h.redemptionRule.maturityDate} 到期
                                             </span>
                                         )}
                                     </div>
