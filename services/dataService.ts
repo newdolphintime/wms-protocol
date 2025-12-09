@@ -1,5 +1,6 @@
 
-import { Fund, FundType, ChartDataPoint, PatchRule, ClientPortfolio, AccountType, LiquidityTier, Holding, RedemptionRule } from '../types';
+
+import { Fund, FundType, ChartDataPoint, PatchRule, ClientPortfolio, AccountType, LiquidityTier, Holding, RedemptionRule, PortfolioHistoryPoint, ProposalAsset } from '../types';
 
 // Helper to get a date string for X days ago
 const getDaysAgo = (days: number) => {
@@ -493,3 +494,47 @@ export const generateFundHistory = (
     // Return chronological (oldest to newest) for charts
     return history.reverse();
   };
+
+// --- SIMULATED PORTFOLIO BACKTEST FOR PROPOSAL ---
+export const calculatePortfolioHistory = (assets: ProposalAsset[], days = 365): PortfolioHistoryPoint[] => {
+    // 1. Calculate total portfolio weight base
+    const totalAmount = assets.reduce((sum, a) => sum + a.amount, 0);
+    if (totalAmount === 0) return [];
+
+    // 2. Prepare individual fund histories (normalized to 1.0 at START of period)
+    // We reuse generateChartData logic but for each fund individually then combine
+    const funds = assets.map(a => MOCK_FUNDS.find(f => f.id === a.fundId)).filter(f => !!f) as Fund[];
+    
+    // We want the chart to start at 1.0 (or 100) "days" ago.
+    // generateChartData starts at 100.
+    const { chartData } = generateChartData(funds, days, [], MOCK_FUNDS);
+
+    // 3. Combine
+    return chartData.map(point => {
+        let weightedSum = 0;
+        let validWeight = 0;
+
+        assets.forEach(asset => {
+            const fund = MOCK_FUNDS.find(f => f.id === asset.fundId);
+            if (fund) {
+                // key is `${fund.id}_actual` (ignoring patches for simplicity in this demo function, or assuming standard)
+                // generateChartData returns "actual" or "patched". We prefer actual, fall back to patched.
+                const val = (point[`${fund.id}_actual`] as number) ?? (point[`${fund.id}_patched`] as number) ?? 100;
+                
+                const weight = asset.amount / totalAmount;
+                weightedSum += val * weight;
+                validWeight += weight;
+            }
+        });
+
+        // Benchmark: A simple steady growth + some noise
+        const dateIdx = chartData.indexOf(point);
+        const benchmarkVal = 100 * (1 + (dateIdx * 0.0003)) + (Math.sin(dateIdx * 0.1) * 2);
+
+        return {
+            date: point.date,
+            value: Number(weightedSum.toFixed(2)),
+            benchmark: Number(benchmarkVal.toFixed(2))
+        };
+    });
+};

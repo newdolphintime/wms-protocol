@@ -1,4 +1,5 @@
 
+
 export enum FundType {
   BROAD_MARKET = '宽基指数ETF',
   SECTOR = '行业主题ETF',
@@ -116,4 +117,28 @@ export interface CashFlow {
   type: 'INFLOW' | 'OUTFLOW';
   recurringRuleId?: string; // Optional linkage to a recurring rule
   relatedHoldingKey?: string; // composite key "accountId_index" to identify the specific holding reduced
+}
+
+// --- Proposal Generation Types ---
+
+export interface ProposalAsset {
+    fundId: string;
+    amount: number; // In Wan (10k) usually or Yuan
+}
+
+export interface ProposalConfig {
+    clientName: string;
+    managerName: string;
+    date: string;
+    riskLevel: string; // e.g., "积极型"
+    investmentHorizon: string; // e.g., "1-3年"
+    totalAmount: number; // Displayed amount
+    assets: ProposalAsset[];
+    aiAnalysis: string;
+}
+
+export interface PortfolioHistoryPoint {
+    date: string;
+    value: number; // Normalized to 100 or actual NAV simulation
+    benchmark: number;
 }
