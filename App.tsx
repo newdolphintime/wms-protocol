@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { 
@@ -552,6 +551,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
   const [isRecurring, setIsRecurring] = useState(false); const [recurFrequency, setRecurFrequency] = useState<Frequency>(Frequency.MONTHLY); const [recurCount, setRecurCount] = useState<number>(12);
   const [ruleModalOpen, setRuleModalOpen] = useState(false); const [editingRuleContext, setEditingRuleContext] = useState<{accId: string, hIdx: number, hName: string, rule?: RedemptionRule} | null>(null);
   const [editingCashAccId, setEditingCashAccId] = useState<string | null>(null); const [tempCashVal, setTempCashVal] = useState('');
+  
   const currentAccountHoldings = useMemo(() => { const accs = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter(a => a.id === selectedAccountId); return accs.flatMap(a => a.holdings.map((h, index) => { const name = h.isExternal ? h.externalName : MOCK_FUNDS.find(f => f.id === h.fundId)?.name; return { ...h, displayName: name, accountId: a.id, originalIndex: index, uniqueKey: `${a.id}_${index}` }; })); }, [portfolio, selectedAccountId]);
   const selectedHoldingData = useMemo(() => { if (!selectedProductId) return null; const holding = currentAccountHoldings.find(h => h.uniqueKey === selectedProductId); if (!holding) return null; let nav = 0; let navDate = new Date().toISOString().split('T')[0]; if (holding.isExternal) { nav = holding.externalNav || 0; navDate = holding.externalNavDate || navDate; } else { const fund = MOCK_FUNDS.find(f => f.id === holding.fundId); nav = fund?.nav || 0; } return { ...holding, currentNav: nav, currentNavDate: navDate }; }, [selectedProductId, currentAccountHoldings]);
   useEffect(() => { if (planCategory === 'REDEMPTION' && selectedProductId && planDate) { const holding = currentAccountHoldings.find(h => h.uniqueKey === selectedProductId); if (holding && holding.redemptionRule) { const dateObj = new Date(planDate); dateObj.setHours(0,0,0,0); if (holding.redemptionRule.lockupEndDate && holding.redemptionRule.ruleType !== 'FIXED_TERM') { const lockupEnd = new Date(holding.redemptionRule.lockupEndDate); lockupEnd.setHours(0,0,0,0); if (dateObj.getTime() < lockupEnd.getTime()) { setValidationError(`产品处于锁定期（至${holding.redemptionRule.lockupEndDate}），无法赎回`); return; } } if (holding.redemptionRule.ruleType === 'FIXED_TERM' && holding.redemptionRule.maturityDate) { const maturity = new Date(holding.redemptionRule.maturityDate); maturity.setHours(0,0,0,0); if (dateObj.getTime() < maturity.getTime()) { setValidationError(`固定期限产品未到期（到期日${holding.redemptionRule.maturityDate}），无法提前赎回`); return; } } if (holding.redemptionRule.ruleType === 'MONTHLY') { const day = dateObj.getDate(); if (day !== holding.redemptionRule.openDay) { setValidationError(`该产品仅在每月 ${holding.redemptionRule.openDay} 日开放赎回`); return; } } } } setValidationError(null); }, [planCategory, selectedProductId, planDate, currentAccountHoldings]);
@@ -629,217 +629,287 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
 
   const lockedDetails = useMemo(() => { const list: { name: string; value: number; reason: string }[] = []; const today = new Date(); today.setHours(0,0,0,0); const accountsToAnalyze = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter((a) => a.id === selectedAccountId); accountsToAnalyze.forEach((account) => { account.holdings.forEach((h) => { let val = 0; let type = FundType.STRATEGY; let name = ''; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; name = h.externalName || '未命名资产'; } else { const f = MOCK_FUNDS.find((fund) => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; name = f.name; } } const availableDate = calculateAvailabilityDate(today, h, type); availableDate.setHours(0,0,0,0); if (today.getTime() < availableDate.getTime()) { const diffTime = availableDate.getTime() - today.getTime(); const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); let reason = `预计T+${days}可用`; if (h.redemptionRule?.ruleType === 'FIXED_TERM' && h.redemptionRule.maturityDate) { reason = `到期自动赎回 (到期日: ${h.redemptionRule.maturityDate})`; } else if (h.redemptionRule?.lockupEndDate) { const lockupEnd = new Date(h.redemptionRule.lockupEndDate); lockupEnd.setHours(0,0,0,0); if (today.getTime() < lockupEnd.getTime()) { reason = `处于锁定期 (至 ${h.redemptionRule.lockupEndDate})`; } else if (h.redemptionRule?.ruleType === 'MONTHLY') { const settlementDays = h.redemptionRule.settlementDays; const openDate = new Date(availableDate); openDate.setDate(openDate.getDate() - settlementDays); if (today.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`; } else { reason = `赎回结算中 (T+${days})`; } } } else if (h.redemptionRule?.ruleType === 'MONTHLY') { const settlementDays = h.redemptionRule.settlementDays; const openDate = new Date(availableDate); openDate.setDate(openDate.getDate() - settlementDays); if (today.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`; } else { reason = `赎回结算中 (T+${days})`; } } list.push({ name, value: val, reason }); } }); }); return list.sort((a, b) => b.value - a.value); }, [portfolio, selectedAccountId]);
   const healthMetrics = useMemo(() => { const currentCash = liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH]; const survivalMonths = monthlyExpenses > 0 ? (currentCash / monthlyExpenses).toFixed(1) : '∞'; let minBalance = Infinity; const lowLiquidityDates: {start: string, end: string}[] = []; let inLow = false; let startLow = ''; projectionData.forEach(p => { if (p.liquid < minBalance) minBalance = p.liquid; if (p.liquid < monthlyExpenses) { if (!inLow) { inLow = true; startLow = p.date; } } else { if (inLow) { inLow = false; lowLiquidityDates.push({start: startLow, end: p.date}); } } }); if (inLow) lowLiquidityDates.push({start: startLow, end: 'Period End'}); return { survivalMonths, minBalance, lowLiquidityDates }; }, [liquidityData, monthlyExpenses, projectionData]);
+  
   const addCashFlow = () => { if (planCategory === 'REDEMPTION') { if (!planShares || !planDate) return; } else { if (!planAmount || !planDate) return; } if (validationError) return; let finalAmount = 0; let finalDesc = planDesc; let finalType = planType; const relatedKey = (planCategory === 'REDEMPTION' || planCategory === 'DIVIDEND') ? selectedProductId : undefined; let settlementDays = 0; if (planCategory === 'REDEMPTION' && selectedHoldingData) { finalAmount = Number(planShares) * selectedHoldingData.currentNav; finalDesc = `[赎回] ${selectedHoldingData.displayName} (${planShares}份)`; finalType = 'INFLOW'; if (selectedHoldingData.redemptionRule) { settlementDays = selectedHoldingData.redemptionRule.settlementDays; } else { let type = FundType.STRATEGY; if (selectedHoldingData.isExternal) { type = selectedHoldingData.externalType || FundType.STRATEGY; } else { const f = MOCK_FUNDS.find(fund => fund.id === selectedHoldingData.fundId); if (f) type = f.type; } const tier = getLiquidityTier(type); settlementDays = getSettlementDays(tier); } } else if (planCategory === 'DIVIDEND' && selectedHoldingData) { finalAmount = Number(planAmount); finalDesc = `[分红] ${selectedHoldingData.displayName}`; finalType = 'INFLOW'; } else if (planCategory === 'INSURANCE') { finalAmount = Number(planAmount); finalDesc = `[保单] ${insuranceName}`; finalType = 'OUTFLOW'; } else { finalAmount = Number(planAmount); } const shiftDate = (baseDateStr: string, days: number) => { if (days === 0) return baseDateStr; const d = new Date(baseDateStr); d.setDate(d.getDate() + days); return d.toISOString().split('T')[0]; }; const descriptionWithDelay = settlementDays > 0 ? `${finalDesc} (预计T+${settlementDays}到账)` : finalDesc; const newFlows: CashFlow[] = []; const ruleId = isRecurring ? Date.now().toString() : undefined; if (isRecurring) { const [startYear, startMonth, startDay] = planDate.split('-').map(Number); for(let i = 0; i < recurCount; i++) { const current = new Date(startYear, startMonth - 1, startDay); if (recurFrequency === Frequency.MONTHLY) { current.setMonth(current.getMonth() + i); } else if (recurFrequency === Frequency.QUARTERLY) { current.setMonth(current.getMonth() + (i * 3)); } else if (recurFrequency === Frequency.YEARLY) { current.setFullYear(current.getFullYear() + i); } const baseDateStr = `${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}-${String(current.getDate()).padStart(2,'0')}`; const effectiveDate = shiftDate(baseDateStr, settlementDays); newFlows.push({ id: `${ruleId}_${i}`, date: effectiveDate, amount: Number(finalAmount), description: descriptionWithDelay, type: finalType, recurringRuleId: ruleId, relatedHoldingKey: relatedKey }); } } else { const effectiveDate = shiftDate(planDate, settlementDays); newFlows.push({ id: Date.now().toString(), date: effectiveDate, amount: Number(finalAmount), description: descriptionWithDelay, type: finalType, relatedHoldingKey: relatedKey }); } setCashFlows([...cashFlows, ...newFlows]); setPlanAmount(''); setPlanShares(''); setPlanDate(''); setPlanDesc(''); setIsRecurring(false); };
   const handleDeleteCashFlow = (id: string) => { setCashFlows(current => current.filter(item => item.id !== id)); };
   const openRuleModal = (accId: string, hIdx: number, hName: string, rule?: RedemptionRule) => { setEditingRuleContext({accId, hIdx, hName, rule}); setRuleModalOpen(true); };
   const handleSaveRule = (rule: RedemptionRule) => { if (editingRuleContext) { updateHoldingRule(editingRuleContext.accId, editingRuleContext.hIdx, rule); } };
   const currentAvailable = liquidityData[LiquidityTier.CASH]; const currentLocked = liquidityData['Total'] - currentAvailable; const totalProjectedExpense = useMemo(() => projectionData.reduce((sum, p) => sum + (p.rawExpense || 0), 0), [projectionData]);
   
-  const CustomChartTooltip = ({ active, payload, label }: any) => { 
-    if (active && payload && payload.length) { 
-        const data = payload[0].payload; 
-        const liquid = data.liquid; 
-        const locked = data.locked; 
-        const expense = Math.abs(data.rawExpense); 
-        const lockedBreakdown = data.lockedBreakdown || []; 
-        const liquidBreakdown = data.liquidBreakdown || [];
-        
-        return ( 
-            <div className="bg-white rounded-xl shadow-xl border border-gray-100 p-4 min-w-[280px] text-sm"> 
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-50"> 
-                    <span className="font-bold text-gray-900">{label} (日期)</span> 
-                    <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">预测详情</span> 
-                </div> 
-                <div className="space-y-3"> 
-                    <div className="flex flex-col gap-1">
-                        <div className="flex justify-between items-center"> 
-                            <span className="text-gray-500 flex items-center gap-1"><div className="w-2 h-2 bg-indigo-600 rounded-full"></div>可用流动性</span> 
-                            <span className="font-mono font-bold text-gray-900">¥ {liquid.toLocaleString()}</span> 
-                        </div> 
-                        {liquidBreakdown.length > 0 && ( 
-                            <div className="bg-indigo-50/30 rounded p-2 mt-1 space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar border border-indigo-100"> 
-                                {liquidBreakdown.map((item: any, idx: number) => ( 
-                                    <div key={idx} className="flex justify-between items-start text-xs"> 
-                                        <span className="text-indigo-900 truncate max-w-[120px]" title={item.name}>{item.name}</span> 
-                                        <div className="text-right"> 
-                                            <div className="font-mono text-indigo-700">¥{(item.value/10000).toFixed(1)}万</div> 
-                                            <div className="text-[10px] text-indigo-400 scale-90 origin-right">{item.reason}</div> 
-                                        </div> 
-                                    </div> 
-                                ))} 
-                            </div> 
-                        )}
-                    </div>
-                    
-                    <div className="flex flex-col gap-1"> 
-                        <div className="flex justify-between items-center"> 
-                            <span className="text-gray-500 flex items-center gap-1"><div className="w-2 h-2 bg-slate-300 rounded-full"></div>锁定流动性</span> 
-                            <span className="font-mono font-medium text-gray-600">¥ {locked.toLocaleString()}</span> 
-                        </div> 
-                        {lockedBreakdown.length > 0 && ( 
-                            <div className="bg-gray-50 rounded p-2 mt-1 space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar border border-gray-100"> 
-                                {lockedBreakdown.map((item: any, idx: number) => ( 
-                                    <div key={idx} className="flex justify-between items-start text-xs"> 
-                                        <span className="text-gray-600 truncate max-w-[120px]" title={item.name}>{item.name}</span> 
-                                        <div className="text-right"> 
-                                            <div className="font-mono text-gray-700">¥{(item.value/10000).toFixed(1)}万</div> 
-                                            <div className="text-[10px] text-gray-400 scale-90 origin-right">{item.reason}</div> 
-                                        </div> 
-                                    </div> 
-                                ))} 
-                            </div> 
-                        )} 
+  // -- NEW STATE FOR SELECTED DATE DETAIL --
+  const [selectedDateData, setSelectedDateData] = useState<any>(null);
+
+  // Initialize selection with the first data point if available
+  useEffect(() => {
+    if (projectionData.length > 0 && !selectedDateData) {
+        setSelectedDateData(projectionData[0]);
+    }
+  }, [projectionData]);
+
+  // Refactored detailed content renderer (Shared between Tooltip and Side Panel)
+  const renderDetailContent = (data: any, label: string) => {
+    const liquid = data.liquid; 
+    const locked = data.locked; 
+    const expense = Math.abs(data.rawExpense); 
+    const lockedBreakdown = data.lockedBreakdown || []; 
+    const liquidBreakdown = data.liquidBreakdown || [];
+    
+    return ( 
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 w-full text-sm"> 
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-50"> 
+                <span className="font-bold text-gray-900">{label} (日期)</span> 
+                <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">资金详情</span> 
+            </div> 
+            <div className="space-y-3"> 
+                <div className="flex flex-col gap-1">
+                    <div className="flex justify-between items-center"> 
+                        <span className="text-gray-500 flex items-center gap-1"><div className="w-2 h-2 bg-indigo-600 rounded-full"></div>可用流动性</span> 
+                        <span className="font-mono font-bold text-gray-900">¥ {liquid.toLocaleString()}</span> 
                     </div> 
-                    {expense > 0 && ( 
-                        <div className="flex justify-between items-center pt-2 border-t border-gray-50 text-red-600"> 
-                            <span className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-full"></div>当日支出</span> 
-                            <span className="font-mono font-bold">- ¥ {expense.toLocaleString()}</span> 
+                    {liquidBreakdown.length > 0 && ( 
+                        <div className="bg-indigo-50/30 rounded p-2 mt-1 space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar border border-indigo-100"> 
+                            {liquidBreakdown.map((item: any, idx: number) => ( 
+                                <div key={idx} className="flex justify-between items-start text-xs"> 
+                                    <span className="text-indigo-900 truncate max-w-[120px]" title={item.name}>{item.name}</span> 
+                                    <div className="text-right"> 
+                                        <div className="font-mono text-indigo-700">¥{(item.value/10000).toFixed(1)}万</div> 
+                                        <div className="text-[10px] text-indigo-400 scale-90 origin-right">{item.reason}</div> 
+                                    </div> 
+                                </div> 
+                            ))} 
+                        </div> 
+                    )}
+                </div>
+                
+                <div className="flex flex-col gap-1"> 
+                    <div className="flex justify-between items-center"> 
+                        <span className="text-gray-500 flex items-center gap-1"><div className="w-2 h-2 bg-slate-300 rounded-full"></div>锁定流动性</span> 
+                        <span className="font-mono font-medium text-gray-600">¥ {locked.toLocaleString()}</span> 
+                    </div> 
+                    {lockedBreakdown.length > 0 && ( 
+                        <div className="bg-gray-50 rounded p-2 mt-1 space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar border border-gray-100"> 
+                            {lockedBreakdown.map((item: any, idx: number) => ( 
+                                <div key={idx} className="flex justify-between items-start text-xs"> 
+                                    <span className="text-gray-600 truncate max-w-[120px]" title={item.name}>{item.name}</span> 
+                                    <div className="text-right"> 
+                                        <div className="font-mono text-gray-700">¥{(item.value/10000).toFixed(1)}万</div> 
+                                        <div className="text-[10px] text-gray-400 scale-90 origin-right">{item.reason}</div> 
+                                    </div> 
+                                </div> 
+                            ))} 
                         </div> 
                     )} 
                 </div> 
+                {expense > 0 && ( 
+                    <div className="flex justify-between items-center pt-2 border-t border-gray-50 text-red-600"> 
+                        <span className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-full"></div>当日支出</span> 
+                        <span className="font-mono font-bold">- ¥ {expense.toLocaleString()}</span> 
+                    </div> 
+                )} 
             </div> 
-        ); 
-    } 
-    return null; 
+        </div> 
+    ); 
   };
-  return (
-    <div className="space-y-6"> <div className="flex justify-between items-center"> <h1 className="text-2xl font-bold text-gray-900">流动性测算</h1> <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="text-sm border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 py-1.5" > <option value="ALL">全部账户资产</option> {portfolio.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)} </select> </div> <div className="grid grid-cols-1 md:grid-cols-3 gap-6"> <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between relative group cursor-help transition-shadow hover:shadow-md"> <div> <div className="text-sm text-gray-500 mb-1 flex items-center gap-1"> 当前现金储备 (T+0) <Info className="w-3.5 h-3.5 text-gray-400" /> </div> <div className="text-2xl font-bold text-gray-900 font-mono">¥ {currentAvailable.toLocaleString()}</div> </div> <div className="p-3 bg-green-50 rounded-full text-green-600"><Wallet className="w-6 h-6"/></div> <div className="absolute top-full left-0 mt-4 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-30 hidden group-hover:block"> <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-50"> <span className="font-bold text-sm text-gray-900">资金构成明细</span> <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">实时</span> </div> <div className="space-y-3"> <div className="flex justify-between items-center text-sm"> <span className="text-gray-500">可用流动性</span> <span className="font-mono font-bold text-gray-900">¥ {currentAvailable.toLocaleString()}</span> </div> <div className="flex flex-col gap-1"> <div className="flex justify-between items-center text-sm"> <span className="text-gray-500">锁定流动性</span> <span className="font-mono font-medium text-gray-600">¥ {currentLocked.toLocaleString()}</span> </div> {lockedDetails.length > 0 && ( <div className="bg-gray-50 rounded p-2 mt-1 space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar"> {lockedDetails.map((item, idx) => ( <div key={idx} className="flex justify-between items-start text-xs"> <span className="text-gray-600 truncate max-w-[100px]" title={item.name}>{item.name}</span> <div className="text-right"> <div className="font-mono text-gray-700">¥{(item.value/10000).toFixed(1)}万</div> <div className="text-[10px] text-gray-400 scale-90 origin-right">{item.reason}</div> </div> </div> ))} </div> )} </div> <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-50 text-red-600"> <span>预计支出 (30天)</span> <span className="font-mono font-bold">- ¥ {totalProjectedExpense.toLocaleString()}</span> </div> </div> </div> </div> <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between"> <div> <div className="text-sm text-gray-500 mb-1">生存期估算 (基于月支出)</div> <div className="flex items-baseline gap-2"> <span className="text-2xl font-bold text-gray-900">{healthMetrics.survivalMonths}</span> <span className="text-sm text-gray-500">个月</span> </div> </div> <div className="p-3 bg-blue-50 rounded-full text-blue-600"><Clock className="w-6 h-6"/></div> </div> <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between"> <div> <div className="text-sm text-gray-500 mb-1">流动性健康状态</div> {healthMetrics.lowLiquidityDates.length === 0 ? ( <div className="flex items-center gap-1 text-green-600 font-bold"><ShieldCheck className="w-5 h-5"/> 健康</div> ) : ( <div className="flex items-center gap-1 text-orange-600 font-bold"><AlertOctagon className="w-5 h-5"/> 有风险</div> )} </div> <div className={`p-3 rounded-full ${healthMetrics.lowLiquidityDates.length === 0 ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}> <Activity className="w-6 h-6"/> </div> </div> </div> <div className="grid grid-cols-1 lg:grid-cols-3 gap-6"> <div className="lg:col-span-2 space-y-6"> <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm"> <div className="flex justify-between items-center mb-6"> <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"> <TrendingUp className="w-5 h-5 text-indigo-600" /> 流动性趋势预测 (30天) </h3> <div className="flex items-center gap-2 text-sm text-gray-500"> <span className="flex items-center gap-1"><div className="w-3 h-3 bg-indigo-600 rounded-sm"></div> 可用资金</span> <span className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-300 rounded-sm"></div> 锁定流动性</span> <span className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> 预计支出</span> </div> </div> <div className="h-[320px]"> <ResponsiveContainer width="100%" height="100%"> <BarChart data={projectionData} margin={{top: 10, right: 10, left: 0, bottom: 0}} stackOffset="sign"> <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0"/> <XAxis dataKey="displayDate" tick={{fontSize: 10}} tickLine={false} axisLine={{stroke: '#e5e7eb'}} minTickGap={30}/> <YAxis tick={{fontSize: 10}} tickLine={false} axisLine={false}/> <RechartsTooltip cursor={{fill: '#f8fafc'}} content={<CustomChartTooltip />} /> <ReferenceLine y={0} stroke="#94a3b8" /> <Bar dataKey="liquid" stackId="a" fill="#4f46e5" radius={[4, 4, 0, 0]} /> <Bar dataKey="locked" stackId="a" fill="#cbd5e1" radius={[0, 0, 0, 0]} /> <Bar dataKey="expense" stackId="a" fill="#ef4444" radius={[0, 0, 4, 4]} /> </BarChart> </ResponsiveContainer> </div> </div> <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm"> <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><Target className="w-5 h-5 text-indigo-600"/> 现金流规划工具</h3> <div className="grid grid-cols-1 md:grid-cols-2 gap-6"> <div className="space-y-4"> <div className="flex bg-gray-100 p-1 rounded-lg"> <button onClick={() => { setPlanCategory('GENERIC'); setPlanType('OUTFLOW'); }} className={`flex-1 text-xs py-2 font-medium rounded-md transition-all ${planCategory === 'GENERIC' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>通用收支</button> <button onClick={() => { setPlanCategory('REDEMPTION'); setPlanType('INFLOW'); }} className={`flex-1 text-xs py-2 font-medium rounded-md transition-all ${planCategory === 'REDEMPTION' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>产品赎回</button> <button onClick={() => { setPlanCategory('DIVIDEND'); setPlanType('INFLOW'); }} className={`flex-1 text-xs py-2 font-medium rounded-md transition-all ${planCategory === 'DIVIDEND' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>分红到账</button> </div> {planCategory === 'GENERIC' && ( <div className="flex gap-2"> <select value={planType} onChange={e => setPlanType(e.target.value as any)} className="w-1/3 text-sm border-gray-300 rounded-md"> <option value="INFLOW">收入 (+)</option> <option value="OUTFLOW">支出 (-)</option> </select> <input type="text" placeholder="描述 (如: 年终奖)" value={planDesc} onChange={e => setPlanDesc(e.target.value)} className="w-2/3 text-sm border-gray-300 rounded-md"/> </div> )} {(planCategory === 'REDEMPTION' || planCategory === 'DIVIDEND') && ( <div> <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"> <option value="">选择关联产品...</option> {currentAccountHoldings.map((h, i) => ( <option key={h.uniqueKey} value={h.uniqueKey}>{h.displayName} ({h.shares}份)</option> ))} </select> {validationError && ( <div className="mt-1 text-xs text-red-600 flex items-center gap-1"> <AlertTriangle className="w-3 h-3" /> {validationError} </div> )} </div> )} {planCategory === 'REDEMPTION' ? ( <div className="space-y-4"> <div> <label className="block text-xs text-gray-500 mb-1"> 赎回份额 <span className="text-gray-400">(持有: {selectedHoldingData?.shares ?? 0}份)</span> </label> <input type="number" value={planShares} onChange={e => setPlanShares(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder="请输入份额" /> </div> {selectedHoldingData && ( <div className="bg-indigo-50/50 border border-indigo-100 p-3 rounded-lg space-y-2"> <div className="flex justify-between text-xs text-gray-600"> <span>最新净值 ({selectedHoldingData.currentNavDate})</span> <span className="font-mono font-medium">{selectedHoldingData.currentNav.toFixed(4)}</span> </div> <div className="flex justify-between items-center border-t border-indigo-100 pt-2"> <span className="text-xs font-bold text-indigo-900">预计赎回金额</span> <span className="text-sm font-bold text-indigo-700 font-mono"> ¥ {((Number(planShares) || 0) * selectedHoldingData.currentNav).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} </span> </div> </div> )} <div> <label className="block text-xs text-gray-500 mb-1">发生日期</label> <input type="date" value={planDate} onChange={e => setPlanDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/> </div> </div> ) : ( <div className="grid grid-cols-2 gap-4"> <div> <label className="block text-xs text-gray-500 mb-1">金额</label> <input type="number" value={planAmount} onChange={e => setPlanAmount(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/> </div> <div> <label className="block text-xs text-gray-500 mb-1">发生日期</label> <input type="date" value={planDate} onChange={e => setPlanDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/> </div> </div> )} <div className="border-t border-gray-100 pt-3"> <div className="flex items-center gap-2 mb-2"> <input type="checkbox" id="recurCheck" checked={isRecurring} onChange={e => setIsRecurring(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500"/> <label htmlFor="recurCheck" className="text-sm text-gray-700">设为周期性事件</label> </div> {isRecurring && ( <div className="flex gap-2 bg-gray-50 p-2 rounded-lg"> <select value={recurFrequency} onChange={e => setRecurFrequency(e.target.value as Frequency)} className="text-xs border-gray-300 rounded-md"> <option value={Frequency.MONTHLY}>每月</option> <option value={Frequency.QUARTERLY}>每季</option> <option value={Frequency.YEARLY}>每年</option> </select> <div className="flex items-center gap-1"> <span className="text-xs text-gray-500">共</span> <input type="number" value={recurCount} onChange={e => setRecurCount(Number(e.target.value))} className="w-12 text-xs border-gray-300 rounded-md"/> <span className="text-xs text-gray-500">次</span> </div> </div> )} </div> <button onClick={addCashFlow} disabled={!!validationError} className={`w-full text-white py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 ${validationError ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`} > <Plus className="w-4 h-4"/> 添加至预测 </button> </div> <div className="bg-white rounded-lg border border-gray-200 h-[300px] p-2"> <FinancialCalendar cashFlows={cashFlows} onDelete={handleDeleteCashFlow} /> </div> </div> <div className="mt-6 border-t border-gray-100 pt-4"> <div className="flex justify-between items-center mb-3"> <h4 className="text-sm font-bold text-gray-900">规划资金明细</h4> <span className="text-xs text-gray-500">共 {cashFlows.length} 条记录</span> </div> <div className="bg-white border border-gray-200 rounded-lg overflow-hidden"> <div className="max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200"> {cashFlows.length === 0 ? ( <div className="p-8 text-center text-gray-400 text-xs"> 暂无资金规划记录，请在上方添加 </div> ) : ( <table className="min-w-full divide-y divide-gray-100"> <thead className="bg-gray-50 sticky top-0"> <tr> <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">日期</th> <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">类型</th> <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">说明</th> <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">金额</th> <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">操作</th> </tr> </thead> <tbody className="divide-y divide-gray-100 bg-white"> {cashFlows.sort((a,b) => a.date.localeCompare(b.date)).map(flow => ( <tr key={flow.id} className="hover:bg-gray-50 transition-colors group"> <td className="px-4 py-2 text-xs text-gray-600 font-mono whitespace-nowrap">{flow.date}</td> <td className="px-4 py-2 text-xs"> <span className={`px-1.5 py-0.5 rounded border ${flow.type === 'INFLOW' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}> {flow.type === 'INFLOW' ? '收入' : '支出'} </span> </td> <td className="px-4 py-2 text-xs text-gray-900 max-w-[200px] truncate" title={flow.description}>{flow.description}</td> <td className={`px-4 py-2 text-xs font-mono font-medium text-right ${flow.type === 'INFLOW' ? 'text-green-600' : 'text-red-600'}`}> {flow.type === 'INFLOW' ? '+' : '-'} {flow.amount.toLocaleString()} </td> <td className="px-4 py-2 text-center"> <button onClick={() => handleDeleteCashFlow(flow.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-50" title="删除" > <Trash2 className="w-3.5 h-3.5" /> </button> </td> </tr> ))} </tbody> </table> )} </div> </div> </div> </div> <LiquidityRulesCard /> </div> <div className="space-y-6"> <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="px-4 py-3 border-b border-gray-200 bg-gray-50"> <h3 className="font-bold text-gray-900">资产流动性配置</h3> </div> <div className="max-h-[600px] overflow-y-auto divide-y divide-gray-100"> {currentAccountHoldings.map((h, idx) => { let nav = 0; let navDate = ''; if (h.isExternal) { nav = h.externalNav || 0; navDate = h.externalNavDate || '未知日期'; } else { const f = MOCK_FUNDS.find(fund => fund.id === h.fundId); if (f) { nav = f.nav; navDate = new Date().toISOString().split('T')[0]; } } const amount = nav * h.shares; return ( <div key={idx} className="p-4 hover:bg-gray-50"> <div className="flex justify-between items-start mb-2"> <div> <div className="font-medium text-gray-900 text-sm">{h.displayName}</div> <div className="text-xs text-gray-500 mt-0.5"> {h.isExternal ? '外部资产' : '公募基金'} · {h.redemptionRule ? (h.redemptionRule.ruleType === 'MONTHLY' ? '定期开放' : (h.redemptionRule.ruleType === 'FIXED_TERM' ? '到期自动赎回' : '每日开放')) : '默认规则'} </div> </div> <button onClick={() => openRuleModal(h.accountId, (h as any).originalIndex, h.displayName || '', h.redemptionRule)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded" > <Settings className="w-4 h-4"/> </button> </div> <div className="grid grid-cols-2 gap-2 text-xs mb-2 bg-gray-50/50 p-2 rounded border border-gray-100"> <div> <span className="text-gray-500 block">持有份额</span> <span className="font-mono text-gray-700">{h.shares.toLocaleString()}</span> </div> <div> <span className="text-gray-500 block">持仓金额</span> <span className="font-mono font-medium text-gray-900">¥{(amount/10000).toFixed(2)}万</span> </div> <div> <span className="text-gray-500 block">最新净值</span> <span className="font-mono text-gray-700">{nav.toFixed(4)}</span> </div> <div> <span className="text-gray-500 block">净值日期</span> <span className="font-mono text-gray-700">{navDate}</span> </div> </div> <div className="flex items-center gap-2 text-xs"> <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600"> T+{h.redemptionRule?.settlementDays ?? getSettlementDays(h.isExternal ? (h.externalType ? getLiquidityTier(h.externalType) : LiquidityTier.MEDIUM) : (h.fundId ? getLiquidityTier(MOCK_FUNDS.find(f=>f.id===h.fundId)?.type!) : LiquidityTier.MEDIUM))} </span> {h.redemptionRule?.ruleType === 'MONTHLY' && ( <span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100"> 每月{h.redemptionRule.openDay}日开放 </span> )} {h.redemptionRule?.ruleType === 'FIXED_TERM' && ( <span className="bg-purple-50 px-1.5 py-0.5 rounded text-purple-700 border border-purple-100"> {h.redemptionRule.maturityDate} 到期 </span> )} </div> </div> ); })} </div> </div> </div> </div> <LiquidityRuleModal isOpen={ruleModalOpen} onClose={() => setRuleModalOpen(false)} holdingName={editingRuleContext?.hName || ''} currentRule={editingRuleContext?.rule} onSave={handleSaveRule} /> </div>
-  );
-};
-const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const location = useLocation();
-  const navItems = [
-    { path: '/', label: '产品列表', icon: ListIcon },
-    { path: '/comparison', label: '业绩对比', icon: BarChart2 },
-    { path: '/portfolio', label: '持仓分析', icon: Briefcase },
-    { path: '/liquidity', label: '流动性测算', icon: Droplet },
-    { path: '/proposal', label: '建议书生成', icon: FileText },
-  ];
-  return (
-    <div className="min-h-screen flex flex-col">
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-40 print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="bg-indigo-600 p-2 rounded-lg"><TrendingUp className="h-6 w-6 text-white" /></div>
-              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600">FundInsight Pro</span>
-            </div>
-            <div className="flex space-x-1">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-                return (
-                  <Link key={item.path} to={item.path} className={`inline-flex items-center px-4 py-2 border-b-2 text-sm font-medium transition-colors h-16 ${isActive ? 'border-indigo-500 text-indigo-600 bg-indigo-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                    <Icon className="w-4 h-4 mr-2" />{item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </nav>
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 print:p-0 print:max-w-none">{children}</main>
-    </div>
-  );
-};
 
-// --- App Component ---
+  return (
+    <div className="space-y-6"> <div className="flex justify-between items-center"> <h1 className="text-2xl font-bold text-gray-900">流动性测算</h1> <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="text-sm border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 py-1.5" > <option value="ALL">全部账户资产</option> {portfolio.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)} </select> </div> <div className="grid grid-cols-1 md:grid-cols-3 gap-6"> <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between relative group cursor-help transition-shadow hover:shadow-md"> <div> <div className="text-sm text-gray-500 mb-1 flex items-center gap-1"> 当前现金储备 (T+0) <Info className="w-3.5 h-3.5 text-gray-400" /> </div> <div className="text-2xl font-bold text-gray-900 font-mono">¥ {currentAvailable.toLocaleString()}</div> </div> <div className="p-3 bg-green-50 rounded-full text-green-600"><Wallet className="w-6 h-6"/></div> <div className="absolute top-full left-0 mt-4 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-30 hidden group-hover:block"> <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-50"> <span className="font-bold text-sm text-gray-900">资金构成明细</span> <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">实时</span> </div> <div className="space-y-3"> <div className="flex justify-between items-center text-sm"> <span className="text-gray-500">可用流动性</span> <span className="font-mono font-bold text-gray-900">¥ {currentAvailable.toLocaleString()}</span> </div> <div className="flex flex-col gap-1"> <div className="flex justify-between items-center text-sm"> <span className="text-gray-500">锁定流动性</span> <span className="font-mono font-medium text-gray-600">¥ {currentLocked.toLocaleString()}</span> </div> {lockedDetails.length > 0 && ( <div className="bg-gray-50 rounded p-2 mt-1 space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar"> {lockedDetails.map((item, idx) => ( <div key={idx} className="flex justify-between items-start text-xs"> <span className="text-gray-600 truncate max-w-[100px]" title={item.name}>{item.name}</span> <div className="text-right"> <div className="font-mono text-gray-700">¥{(item.value/10000).toFixed(1)}万</div> <div className="text-[10px] text-gray-400 scale-90 origin-right">{item.reason}</div> </div> </div> ))} </div> )} </div> <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-50 text-red-600"> <span>预计支出 (30天)</span> <span className="font-mono font-bold">- ¥ {totalProjectedExpense.toLocaleString()}</span> </div> </div> </div> </div> <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between"> <div> <div className="text-sm text-gray-500 mb-1">生存期估算 (基于月支出)</div> <div className="flex items-baseline gap-2"> <span className="text-2xl font-bold text-gray-900">{healthMetrics.survivalMonths}</span> <span className="text-sm text-gray-500">个月</span> </div> </div> <div className="p-3 bg-blue-50 rounded-full text-blue-600"><Clock className="w-6 h-6"/></div> </div> <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between"> <div> <div className="text-sm text-gray-500 mb-1">流动性健康状态</div> {healthMetrics.lowLiquidityDates.length === 0 ? ( <div className="flex items-center gap-1 text-green-600 font-bold"><ShieldCheck className="w-5 h-5"/> 健康</div> ) : ( <div className="flex items-center gap-1 text-orange-600 font-bold"><AlertOctagon className="w-5 h-5"/> 有风险</div> )} </div> <div className={`p-3 rounded-full ${healthMetrics.lowLiquidityDates.length === 0 ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}> <Activity className="w-6 h-6"/> </div> </div> </div> <div className="grid grid-cols-1 lg:grid-cols-3 gap-6"> <div className="lg:col-span-2 space-y-6"> <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm"> <div className="flex justify-between items-center mb-6"> <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"> <TrendingUp className="w-5 h-5 text-indigo-600" /> 流动性趋势预测 (30天) </h3> <div className="flex items-center gap-2 text-sm text-gray-500"> <span className="flex items-center gap-1"><div className="w-3 h-3 bg-indigo-600 rounded-sm"></div> 可用资金</span> <span className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-300 rounded-sm"></div> 锁定流动性</span> <span className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> 预计支出</span> </div> </div> 
+  
+  {/* UPDATE: Reverted to full width chart container, removed embedded details panel */}
+  <div className="h-[320px]">
+      <ResponsiveContainer width="100%" height="100%">
+          <BarChart 
+              data={projectionData} 
+              margin={{top: 10, right: 10, left: 0, bottom: 0}} 
+              stackOffset="sign"
+              // Added interactive onClick handler using activeLabel or activePayload
+              onClick={(nextState) => {
+                  if (nextState && nextState.activeLabel) {
+                      // Reliable method: find data by X-axis label
+                      const item = projectionData.find(p => p.displayDate === nextState.activeLabel);
+                      if (item) setSelectedDateData(item);
+                  } else if (nextState && nextState.activePayload && nextState.activePayload.length) {
+                      // Fallback method
+                      setSelectedDateData(nextState.activePayload[0].payload);
+                  }
+              }}
+          >
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0"/>
+              <XAxis dataKey="displayDate" tick={{fontSize: 10}} tickLine={false} axisLine={{stroke: '#e5e7eb'}} minTickGap={30}/>
+              <YAxis tick={{fontSize: 10}} tickLine={false} axisLine={false}/>
+              {/* Tooltip hidden but keeps cursor logic active */}
+              <RechartsTooltip cursor={{fill: '#f8fafc'}} content={() => null} />
+              <ReferenceLine y={0} stroke="#94a3b8" />
+              {/* Bars are now individually clickable as well for better touch/click reliability */}
+              <Bar 
+                dataKey="liquid" 
+                stackId="a" 
+                fill="#4f46e5" 
+                radius={[4, 4, 0, 0]} 
+                cursor="pointer"
+                onClick={(data) => setSelectedDateData(data.payload)}
+              />
+              <Bar 
+                dataKey="locked" 
+                stackId="a" 
+                fill="#cbd5e1" 
+                radius={[0, 0, 0, 0]} 
+                cursor="pointer"
+                onClick={(data) => setSelectedDateData(data.payload)}
+              />
+              <Bar 
+                dataKey="expense" 
+                stackId="a" 
+                fill="#ef4444" 
+                radius={[0, 0, 4, 4]} 
+                cursor="pointer"
+                onClick={(data) => setSelectedDateData(data.payload)}
+              />
+          </BarChart>
+      </ResponsiveContainer>
+  </div>
+
+ </div> <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm"> <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><Target className="w-5 h-5 text-indigo-600"/> 现金流规划工具</h3> <div className="grid grid-cols-1 md:grid-cols-2 gap-6"> <div className="space-y-4"> <div className="flex bg-gray-100 p-1 rounded-lg"> <button onClick={() => { setPlanCategory('GENERIC'); setPlanType('OUTFLOW'); }} className={`flex-1 text-xs py-2 font-medium rounded-md transition-all ${planCategory === 'GENERIC' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>通用收支</button> <button onClick={() => { setPlanCategory('REDEMPTION'); setPlanType('INFLOW'); }} className={`flex-1 text-xs py-2 font-medium rounded-md transition-all ${planCategory === 'REDEMPTION' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>产品赎回</button> <button onClick={() => { setPlanCategory('DIVIDEND'); setPlanType('INFLOW'); }} className={`flex-1 text-xs py-2 font-medium rounded-md transition-all ${planCategory === 'DIVIDEND' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>分红到账</button> </div> {planCategory === 'GENERIC' && ( <div className="flex gap-2"> <select value={planType} onChange={e => setPlanType(e.target.value as any)} className="w-1/3 text-sm border-gray-300 rounded-md"> <option value="INFLOW">收入 (+)</option> <option value="OUTFLOW">支出 (-)</option> </select> <input type="text" placeholder="描述 (如: 年终奖)" value={planDesc} onChange={e => setPlanDesc(e.target.value)} className="w-2/3 text-sm border-gray-300 rounded-md"/> </div> )} {(planCategory === 'REDEMPTION' || planCategory === 'DIVIDEND') && ( <div> <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"> <option value="">选择关联产品...</option> {currentAccountHoldings.map((h, i) => ( <option key={h.uniqueKey} value={h.uniqueKey}>{h.displayName} ({h.shares}份)</option> ))} </select> {validationError && ( <div className="mt-1 text-xs text-red-600 flex items-center gap-1"> <AlertTriangle className="w-3 h-3" /> {validationError} </div> )} </div> )} {planCategory === 'REDEMPTION' ? ( <div className="space-y-4"> <div> <label className="block text-xs text-gray-500 mb-1"> 赎回份额 <span className="text-gray-400">(持有: {selectedHoldingData?.shares ?? 0}份)</span> </label> <input type="number" value={planShares} onChange={e => setPlanShares(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder="请输入份额" /> </div> {selectedHoldingData && ( <div className="bg-indigo-50/50 border border-indigo-100 p-3 rounded-lg space-y-2"> <div className="flex justify-between text-xs text-gray-600"> <span>最新净值 ({selectedHoldingData.currentNavDate})</span> <span className="font-mono font-medium">{selectedHoldingData.currentNav.toFixed(4)}</span> </div> <div className="flex justify-between items-center border-t border-indigo-100 pt-2"> <span className="text-xs font-bold text-indigo-900">预计赎回金额</span> <span className="text-sm font-bold text-indigo-700 font-mono"> ¥ {((Number(planShares) || 0) * selectedHoldingData.currentNav).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} </span> </div> </div> )} <div> <label className="block text-xs text-gray-500 mb-1">发生日期</label> <input type="date" value={planDate} onChange={e => setPlanDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/> </div> </div> ) : ( <div className="grid grid-cols-2 gap-4"> <div> <label className="block text-xs text-gray-500 mb-1">金额</label> <input type="number" value={planAmount} onChange={e => setPlanAmount(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/> </div> <div> <label className="block text-xs text-gray-500 mb-1">发生日期</label> <input type="date" value={planDate} onChange={e => setPlanDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md"/> </div> </div> )} <div className="border-t border-gray-100 pt-3"> <div className="flex items-center gap-2 mb-2"> <input type="checkbox" id="recurCheck" checked={isRecurring} onChange={e => setIsRecurring(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500"/> <label htmlFor="recurCheck" className="text-sm text-gray-700">设为周期性事件</label> </div> {isRecurring && ( <div className="flex gap-2 bg-gray-50 p-2 rounded-lg"> <select value={recurFrequency} onChange={e => setRecurFrequency(e.target.value as Frequency)} className="text-xs border-gray-300 rounded-md"> <option value={Frequency.MONTHLY}>每月</option> <option value={Frequency.QUARTERLY}>每季</option> <option value={Frequency.YEARLY}>每年</option> </select> <div className="flex items-center gap-1"> <span className="text-xs text-gray-500">共</span> <input type="number" value={recurCount} onChange={e => setRecurCount(Number(e.target.value))} className="w-12 text-xs border-gray-300 rounded-md"/> <span className="text-xs text-gray-500">次</span> </div> </div> )} </div> <button onClick={addCashFlow} disabled={!!validationError} className={`w-full text-white py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 ${validationError ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`} > <Plus className="w-4 h-4"/> 添加至预测 </button> </div> <div className="bg-white rounded-lg border border-gray-200 h-[300px] p-2"> <FinancialCalendar cashFlows={cashFlows} onDelete={handleDeleteCashFlow} /> </div> </div> <div className="mt-6 border-t border-gray-100 pt-4"> <div className="flex justify-between items-center mb-3"> <h4 className="text-sm font-bold text-gray-900">规划资金明细</h4> <span className="text-xs text-gray-500">共 {cashFlows.length} 条记录</span> </div> <div className="bg-white border border-gray-200 rounded-lg overflow-hidden"> <div className="max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200"> {cashFlows.length === 0 ? ( <div className="p-8 text-center text-gray-400 text-xs"> 暂无资金规划记录，请在上方添加 </div> ) : ( <table className="min-w-full divide-y divide-gray-100"> <thead className="bg-gray-50 sticky top-0"> <tr> <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">日期</th> <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">类型</th> <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">说明</th> <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">金额</th> <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">操作</th> </tr> </thead> <tbody className="divide-y divide-gray-100 bg-white"> {cashFlows.sort((a,b) => a.date.localeCompare(b.date)).map(flow => ( <tr key={flow.id} className="hover:bg-gray-50 transition-colors group"> <td className="px-4 py-2 text-xs text-gray-600 font-mono whitespace-nowrap">{flow.date}</td> <td className="px-4 py-2 text-xs"> <span className={`px-1.5 py-0.5 rounded border ${flow.type === 'INFLOW' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}> {flow.type === 'INFLOW' ? '收入' : '支出'} </span> </td> <td className="px-4 py-2 text-xs text-gray-900 max-w-[200px] truncate" title={flow.description}>{flow.description}</td> <td className={`px-4 py-2 text-xs font-mono font-medium text-right ${flow.type === 'INFLOW' ? 'text-green-600' : 'text-red-600'}`}> {flow.type === 'INFLOW' ? '+' : '-'} {flow.amount.toLocaleString()} </td> <td className="px-4 py-2 text-center"> <button onClick={() => handleDeleteCashFlow(flow.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-50" title="删除" > <Trash2 className="w-3.5 h-3.5" /> </button> </td> </tr> ))} </tbody> </table> )} </div> </div> </div> </div> <LiquidityRulesCard /> </div> <div className="space-y-6"> 
+    {/* Detail Panel: Moved here above the Asset Liquidity Config */}
+    {selectedDateData ? (
+        renderDetailContent(selectedDateData, selectedDateData.displayDate)
+    ) : (
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm text-center text-gray-400 text-sm">
+            点击左侧图表查看资金明细
+        </div>
+    )}
+
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="px-4 py-3 border-b border-gray-200 bg-gray-50"> <h3 className="font-bold text-gray-900">资产流动性配置</h3> </div> <div className="max-h-[600px] overflow-y-auto divide-y divide-gray-100"> {currentAccountHoldings.map((h, idx) => { let nav = 0; let navDate = ''; if (h.isExternal) { nav = h.externalNav || 0; navDate = h.externalNavDate || '未知日期'; } else { const f = MOCK_FUNDS.find(fund => fund.id === h.fundId); if (f) { nav = f.nav; navDate = new Date().toISOString().split('T')[0]; } } const amount = nav * h.shares; return ( <div key={idx} className="p-4 hover:bg-gray-50"> <div className="flex justify-between items-start mb-2"> <div> <div className="font-medium text-gray-900 text-sm">{h.displayName}</div> <div className="text-xs text-gray-500 mt-0.5"> {h.isExternal ? '外部资产' : '公募基金'} · {h.redemptionRule ? (h.redemptionRule.ruleType === 'MONTHLY' ? '定期开放' : (h.redemptionRule.ruleType === 'FIXED_TERM' ? '到期自动赎回' : '每日开放')) : '默认规则'} </div> </div> <button onClick={() => openRuleModal(h.accountId, (h as any).originalIndex, h.displayName || '', h.redemptionRule)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded" > <Settings className="w-4 h-4"/> </button> </div> <div className="grid grid-cols-2 gap-2 text-xs mb-2 bg-gray-50/50 p-2 rounded border border-gray-100"> <div> <span className="text-gray-500 block">持有份额</span> <span className="font-mono text-gray-700">{h.shares.toLocaleString()}</span> </div> <div> <span className="text-gray-500 block">持仓金额</span> <span className="font-mono font-medium text-gray-900">¥{(amount/10000).toFixed(2)}万</span> </div> <div> <span className="text-gray-500 block">最新净值</span> <span className="font-mono text-gray-700">{nav.toFixed(4)}</span> </div> <div> <span className="text-gray-500 block">净值日期</span> <span className="font-mono text-gray-700">{navDate}</span> </div> </div> <div className="flex items-center gap-2 text-xs"> <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600"> T+{h.redemptionRule?.settlementDays ?? getSettlementDays(h.isExternal ? (h.externalType ? getLiquidityTier(h.externalType) : LiquidityTier.MEDIUM) : (h.fundId ? getLiquidityTier(MOCK_FUNDS.find(f=>f.id===h.fundId)?.type!) : LiquidityTier.MEDIUM))} </span> {h.redemptionRule?.ruleType === 'MONTHLY' && ( <span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100"> 每月{h.redemptionRule.openDay}日开放 </span> )} {h.redemptionRule?.ruleType === 'FIXED_TERM' && ( <span className="bg-purple-50 px-1.5 py-0.5 rounded text-purple-700 border border-purple-100"> {h.redemptionRule.maturityDate} 到期 </span> )} </div> </div> ); })} </div> </div> </div> </div> <LiquidityRuleModal isOpen={ruleModalOpen} onClose={() => setRuleModalOpen(false)} holdingName={editingRuleContext?.hName || ''} currentRule={editingRuleContext?.rule} onSave={handleSaveRule} /> </div>
+  );
+};
 
 const App: React.FC = () => {
   const [patchRules, setPatchRules] = useState<PatchRule[]>([]);
   const [portfolio, setPortfolio] = useState<ClientPortfolio>(MOCK_PORTFOLIO);
 
-  const addPatchRule = (rule: PatchRule) => {
-    setPatchRules([...patchRules, rule]);
+  const handleAddPatchRule = (rule: PatchRule) => {
+    setPatchRules(prev => [...prev, rule]);
   };
 
-  const removePatchRule = (id: string) => {
-    setPatchRules(patchRules.filter(r => r.id !== id));
+  const handleRemovePatchRule = (id: string) => {
+    setPatchRules(prev => prev.filter(r => r.id !== id));
   };
 
-  const addExternalAsset = (accountId: string, holding: Holding) => {
-      const newPortfolio = { ...portfolio };
-      const account = newPortfolio.accounts.find(a => a.id === accountId);
-      if (account) {
-          const newAccount = { ...account, holdings: [...account.holdings, holding] };
-          newPortfolio.accounts = newPortfolio.accounts.map(a => a.id === accountId ? newAccount : a);
-          setPortfolio(newPortfolio);
-      }
+  const handleAddExternalAsset = (accountId: string, holding: Holding) => {
+    setPortfolio(prev => {
+      const newAccounts = prev.accounts.map(acc => {
+        if (acc.id === accountId) {
+          return { ...acc, holdings: [...acc.holdings, holding] };
+        }
+        return acc;
+      });
+      return { ...prev, accounts: newAccounts };
+    });
   };
 
-  const updateHoldingRule = (accId: string, holdingIdx: number, rule: RedemptionRule) => {
-      const newPortfolio = { ...portfolio };
-      const account = newPortfolio.accounts.find(a => a.id === accId);
-      if (account && account.holdings[holdingIdx]) {
-          const newAccount = { ...account, holdings: [...account.holdings] };
-          newAccount.holdings[holdingIdx] = { ...newAccount.holdings[holdingIdx], redemptionRule: rule };
-           newPortfolio.accounts = newPortfolio.accounts.map(a => a.id === accId ? newAccount : a);
-          setPortfolio(newPortfolio);
-      }
+  const handleUpdateHoldingRule = (accId: string, holdingIdx: number, rule: RedemptionRule) => {
+      setPortfolio(prev => {
+          const newAccounts = prev.accounts.map(acc => {
+              if (acc.id === accId) {
+                  const newHoldings = [...acc.holdings];
+                  const holding = newHoldings[holdingIdx];
+                  if (holding) {
+                      newHoldings[holdingIdx] = { ...holding, redemptionRule: rule };
+                  }
+                  return { ...acc, holdings: newHoldings };
+              }
+              return acc;
+          });
+          return { ...prev, accounts: newAccounts };
+      });
   };
-  
-  const updateAccountCash = (accId: string, amount: number) => {
-       const newPortfolio = { ...portfolio };
-       const account = newPortfolio.accounts.find(a => a.id === accId);
-       if (account) {
-           const newAccount = { ...account, cashBalance: amount };
-           newPortfolio.accounts = newPortfolio.accounts.map(a => a.id === accId ? newAccount : a);
-           setPortfolio(newPortfolio);
-       }
+
+  const handleUpdateAccountCash = (accId: string, amount: number) => {
+       setPortfolio(prev => {
+          const newAccounts = prev.accounts.map(acc => {
+              if (acc.id === accId) {
+                  return { ...acc, cashBalance: amount };
+              }
+              return acc;
+          });
+          return { ...prev, accounts: newAccounts };
+      });
   };
 
   return (
     <HashRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<FundListPage />} />
-          <Route 
-            path="/comparison" 
-            element={
-              <ComparisonPage 
-                patchRules={patchRules} 
-                onAddPatchRule={addPatchRule} 
-                onRemovePatchRule={removePatchRule} 
-              />
-            } 
-          />
-          <Route 
-            path="/fund/:id" 
-            element={
-              <FundDetailPage 
-                patchRules={patchRules} 
-                onAddPatchRule={addPatchRule} 
-                onRemovePatchRule={removePatchRule} 
-              />
-            } 
-          />
-          <Route 
-            path="/portfolio" 
-            element={
-              <PortfolioPage 
-                portfolio={portfolio} 
-                patchRules={patchRules}
-                onAddExternalAsset={addExternalAsset}
-              />
-            } 
-          />
-          <Route 
-            path="/liquidity" 
-            element={
-              <LiquidityPage 
-                portfolio={portfolio}
-                updateHoldingRule={updateHoldingRule}
-                updateAccountCash={updateAccountCash}
-              />
-            } 
-          />
-          <Route 
-            path="/proposal" 
-            element={<ProposalGenerator />} 
-          />
-        </Routes>
-      </Layout>
+      <div className="flex h-screen bg-gray-50 font-sans text-gray-900">
+        {/* Sidebar */}
+        <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0 z-20">
+          <div className="p-6 border-b border-gray-100 flex items-center gap-3">
+             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">
+               G
+             </div>
+             <div>
+               <h1 className="font-bold text-gray-900">Gemini 智投</h1>
+               <p className="text-xs text-gray-500">专业基金投顾系统</p>
+             </div>
+          </div>
+          
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2 mt-2">市场与发现</div>
+            <NavLink to="/" icon={<ListIcon className="w-5 h-5"/>} label="基金列表" />
+            <NavLink to="/comparison" icon={<BarChart2 className="w-5 h-5"/>} label="业绩对比" />
+            
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2 mt-6">客户账户</div>
+            <NavLink to="/portfolio" icon={<Briefcase className="w-5 h-5"/>} label="持仓分析" />
+            <NavLink to="/liquidity" icon={<Droplet className="w-5 h-5"/>} label="流动性测算" />
+            
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2 mt-6">服务与工具</div>
+            <NavLink to="/proposal" icon={<FileText className="w-5 h-5"/>} label="建议书生成" />
+          </nav>
+          
+          <div className="p-4 border-t border-gray-200">
+             <div className="flex items-center gap-3 px-2 py-2">
+                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+                   A
+                </div>
+                <div>
+                   <div className="text-sm font-medium text-gray-700">Admin User</div>
+                   <div className="text-xs text-gray-500">投顾顾问</div>
+                </div>
+             </div>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto bg-gray-50/50">
+           <div className="max-w-7xl mx-auto p-4 md:p-8">
+             <Routes>
+               <Route path="/" element={<FundListPage />} />
+               <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
+               <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
+               <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
+               <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
+               <Route path="/proposal" element={<ProposalGenerator />} />
+             </Routes>
+           </div>
+        </main>
+      </div>
     </HashRouter>
+  );
+};
+
+const NavLink = ({ to, icon, label }: { to: string, icon: React.ReactNode, label: string }) => {
+  const location = useLocation();
+  const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
+  
+  return (
+    <Link 
+      to={to} 
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        isActive 
+          ? 'bg-indigo-50 text-indigo-700' 
+          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+      }`}
+    >
+      {icon}
+      {label}
+    </Link>
   );
 };
 
