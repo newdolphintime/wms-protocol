@@ -29,10 +29,12 @@ export const analyzeFunds = async (funds: Fund[]): Promise<string> => {
   `;
 
   try {
+    // Fixed: Using gemini-3-flash-preview for text tasks per guidelines
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
+    // Accessing .text property directly as per latest SDK guidelines
     return response.text || "暂时无法生成分析报告，请稍后再试。";
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
@@ -68,10 +70,12 @@ export const generateProposalStrategy = async (config: ProposalConfig): Promise<
     `;
 
     try {
+        // Fixed: Using gemini-3-flash-preview for complex reasoning and professional writing tasks
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3-flash-preview',
           contents: prompt,
         });
+        // Accessing .text property directly as per latest SDK guidelines
         return response.text || "正在生成投资策略建议...";
       } catch (error) {
         console.error("Proposal Gen Error:", error);

@@ -1,5 +1,4 @@
 
-
 export enum FundType {
   BROAD_MARKET = '宽基指数ETF',
   SECTOR = '行业主题ETF',
@@ -24,7 +23,7 @@ export interface Fund {
 
 export interface ChartDataPoint {
   date: string;
-  [key: string]: number | string | null | undefined; // Dynamic keys for fund names, allowing null/undefined for gaps
+  [key: string]: number | string | null | undefined;
 }
 
 export interface AnalysisState {
@@ -37,8 +36,8 @@ export interface PatchRule {
   id: string;
   targetFundId: string;
   proxyFundId: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
+  startDate: string;
+  endDate: string;
 }
 
 // --- Portfolio Types ---
@@ -48,29 +47,31 @@ export enum AccountType {
   FAMILY_TRUST = '家族信托账户',
 }
 
+// Added LiquidityTier enum for asset liquidity classification
+export enum LiquidityTier {
+    CASH = 'CASH',
+    HIGH = 'HIGH',
+    MEDIUM = 'MEDIUM',
+    LOW = 'LOW'
+}
+
 export interface RedemptionRule {
   ruleType: 'DAILY' | 'MONTHLY' | 'FIXED_TERM';
-  openDay?: number; // 1-31 for MONTHLY
-  settlementDays: number; // T+N
-  lockupEndDate?: string; // YYYY-MM-DD. If present, asset is locked until this date.
-  maturityDate?: string; // YYYY-MM-DD. For FIXED_TERM, auto-redemption date.
+  openDay?: number;
+  settlementDays: number;
+  lockupEndDate?: string;
+  maturityDate?: string;
 }
 
 export interface Holding {
-  // If internal fund
   fundId?: string;
-  
-  // If external asset
   isExternal?: boolean;
   externalName?: string;
   externalType?: FundType;
   externalNav?: number;
   externalNavDate?: string;
-
-  shares: number;   // Number of shares/units held
-  avgCost: number;  // Average cost per share
-
-  // Liquidity Config
+  shares: number;
+  avgCost: number;
   redemptionRule?: RedemptionRule;
 }
 
@@ -78,7 +79,7 @@ export interface Account {
   id: string;
   name: string;
   type: AccountType;
-  cashBalance?: number; // Available cash in the account
+  cashBalance?: number;
   holdings: Holding[];
 }
 
@@ -88,57 +89,52 @@ export interface ClientPortfolio {
   accounts: Account[];
 }
 
-// --- Liquidity Types ---
-
-export enum LiquidityTier {
-  CASH = '现金 (T+0)',
-  HIGH = '高流动性 (T+1)',
-  MEDIUM = '一般流动性 (T+3)',
-  LOW = '较低流动性 (T+5/QDII)',
-}
-
+// Added CashFlow interface and Frequency enum for liquidity planning
 export enum Frequency {
-  MONTHLY = 'MONTHLY',
-  QUARTERLY = 'QUARTERLY',
-  YEARLY = 'YEARLY'
-}
-
-export interface RecurringRule {
-  id: string;
-  frequency: Frequency;
-  count: number;
+    MONTHLY = 'MONTHLY',
+    QUARTERLY = 'QUARTERLY',
+    YEARLY = 'YEARLY'
 }
 
 export interface CashFlow {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   amount: number;
   description: string;
   type: 'INFLOW' | 'OUTFLOW';
-  recurringRuleId?: string; // Optional linkage to a recurring rule
-  relatedHoldingKey?: string; // composite key "accountId_index" to identify the specific holding reduced
+  recurringRuleId?: string;
+  relatedHoldingKey?: string;
 }
 
 // --- Proposal Generation Types ---
 
+export type SectionType = 'COVER' | 'DEMAND_ALLOCATION' | 'STRATEGY' | 'BACKTEST' | 'DISCLAIMER' | 'PAGE_BREAK' | 'CUSTOM_TEXT';
+
+export interface DocumentSection {
+    id: string;
+    type: SectionType;
+    title?: string;
+    content?: string;
+}
+
 export interface ProposalAsset {
     fundId: string;
-    amount: number; // In Wan (10k) usually or Yuan
+    amount: number;
 }
 
 export interface ProposalConfig {
     clientName: string;
     managerName: string;
     date: string;
-    riskLevel: string; // e.g., "积极型"
-    investmentHorizon: string; // e.g., "1-3年"
-    totalAmount: number; // Displayed amount
+    riskLevel: string;
+    investmentHorizon: string;
+    totalAmount: number;
     assets: ProposalAsset[];
-    aiAnalysis: string;
+    sections: DocumentSection[];
 }
 
 export interface PortfolioHistoryPoint {
     date: string;
-    value: number; // Normalized to 100 or actual NAV simulation
+    value: number;
     benchmark: number;
 }
