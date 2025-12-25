@@ -1,5 +1,6 @@
 
 
+
 export enum FundType {
   BROAD_MARKET = '宽基指数ETF',
   SECTOR = '行业主题ETF',
@@ -121,6 +122,15 @@ export interface CashFlow {
 
 // --- Proposal Generation Types ---
 
+export type SectionType = 'COVER' | 'DEMAND_ALLOCATION' | 'STRATEGY' | 'BACKTEST' | 'DISCLAIMER' | 'CUSTOM_TEXT' | 'PAGE_BREAK';
+
+export interface DocumentSection {
+  id: string;
+  type: SectionType;
+  title?: string;
+  content?: string;
+}
+
 export interface ProposalAsset {
     fundId: string;
     amount: number; // In Wan (10k) usually or Yuan
@@ -134,7 +144,8 @@ export interface ProposalConfig {
     investmentHorizon: string; // e.g., "1-3年"
     totalAmount: number; // Displayed amount
     assets: ProposalAsset[];
-    aiAnalysis: string;
+    aiAnalysis?: string; // Optional legacy field
+    sections: DocumentSection[]; // New field for page management
 }
 
 export interface PortfolioHistoryPoint {
