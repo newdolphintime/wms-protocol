@@ -27,15 +27,130 @@ import {
 
 const COLORS = ['#e11d21', '#f87171', '#fbbf24', '#34d399', '#60a5fa'];
 
-// --- SHARED PAGE CONTENT COMPONENT ---
-// This ensures 100% visual consistency between main view and thumbnails
+// --- INTERNAL COMPONENTS (Stable, defined outside) ---
+
+const PageHeader = ({ title, sub }: { title: string, sub: string }) => (
+  <div className="flex justify-between items-end border-b-2 border-[#e11d21] pb-2 mb-8">
+      {/* 页面主标题展示 */}
+      <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
+      {/* 页面英文副标题展示 */}
+      <span className="text-gray-400 text-sm uppercase tracking-wider font-light">{sub}</span>
+  </div>
+);
+
+// 内部小组件: 页面容器 (统一内边距)
+const PageWrapper = ({ children, className = "", padding = "p-[20mm]" }: { children?: React.ReactNode, className?: string, padding?: string }) => (
+  <div className={`flex flex-col h-full w-full relative overflow-hidden bg-white ${padding} ${className}`}>
+      {children}
+  </div>
+);
+
+// "插入页面" 触发器 (显示在页面之间)
+const AddSectionTrigger = ({ 
+    index, 
+    onAdd 
+}: { 
+    index: number, 
+    onAdd: (index: number, type: SectionType) => void 
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    
+    return (
+      <div className={`relative h-12 flex items-center justify-center transition-all z-40 print:hidden ${isOpen ? 'opacity-100' : 'opacity-0 hover:opacity-100'}`}>
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-gray-300"></div></div>
+          <div className="relative flex gap-2 bg-white border border-gray-200 shadow-lg rounded-full px-4 py-1.5 ring-4 ring-gray-100/50">
+              <button 
+                onClick={() => onAdd(index, 'CUSTOM_TEXT')} 
+                className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-indigo-600 transition-colors"
+              >
+                  <Plus className="w-4 h-4"/> 插入新页
+              </button>
+              <div className="w-px h-3 bg-gray-200 self-center"></div>
+              <div className="relative">
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsOpen(!isOpen);
+                    }}
+                    className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${isOpen ? 'text-indigo-600' : 'text-gray-700 hover:text-indigo-600'}`}
+                  >
+                      更多模块 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}/>
+                  </button>
+                  
+                  {isOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
+                      <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-white border border-gray-100 shadow-2xl rounded-2xl p-2 min-w-[140px] z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                          {/* 菜单: 策略观点页 */}
+                          <button onClick={() => { onAdd(index, 'STRATEGY'); setIsOpen(false); }} className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-3 transition-colors">
+                            <Quote className="w-4 h-4 opacity-70"/> 策略观点页
+                          </button>
+                          {/* 菜单: 历史回测页 */}
+                          <button onClick={() => { onAdd(index, 'BACKTEST'); setIsOpen(false); }} className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-3 transition-colors">
+                            <TrendingUp className="w-4 h-4 opacity-70"/> 历史回测页
+                          </button>
+                          {/* 菜单: 资产配置页 */}
+                          <button onClick={() => { onAdd(index, 'DEMAND_ALLOCATION'); setIsOpen(false); }} className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-3 transition-colors">
+                            <Layout className="w-4 h-4 opacity-70"/> 资产配置页
+                          </button>
+                          <div className="h-px bg-gray-100 my-1 mx-2"></div>
+                          {/* 菜单: 封面页 */}
+                          <button onClick={() => { onAdd(index, 'COVER'); setIsOpen(false); }} className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-3 transition-colors">
+                            <FileText className="w-4 h-4 opacity-70"/> 封面页
+                          </button>
+                      </div>
+                    </>
+                  )}
+              </div>
+          </div>
+      </div>
+    );
+};
+
+// 页面侧边浮动工具栏 (删除/复制/移动)
+const SectionControls = ({ 
+    sectionId, 
+    index, 
+    isFirst, 
+    isLast, 
+    onRemove, 
+    onDuplicate, 
+    onMove 
+}: { 
+    sectionId: string, 
+    index: number, 
+    isFirst: boolean, 
+    isLast: boolean,
+    onRemove: (id: string) => void,
+    onDuplicate: (index: number) => void,
+    onMove: (index: number, direction: 'up' | 'down') => void
+}) => (
+    <div className="absolute -right-20 top-0 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden sticky top-32 z-30">
+        <button onClick={() => onRemove(sectionId)} className="p-3 bg-white text-gray-400 hover:text-red-500 rounded-2xl shadow-xl border border-gray-100 transition-all hover:scale-110 active:scale-95" title="删除当前页">
+            <Trash2 className="w-5 h-5"/>
+        </button>
+        <button onClick={() => onDuplicate(index)} className="p-3 bg-white text-gray-400 hover:text-indigo-500 rounded-2xl shadow-xl border border-gray-100 transition-all hover:scale-110 active:scale-95" title="复制当前页">
+            <Copy className="w-5 h-5"/>
+        </button>
+        <div className="w-full h-px bg-gray-100 my-1"></div>
+        <button onClick={() => onMove(index, 'up')} disabled={isFirst} className="p-3 bg-white text-gray-400 hover:text-gray-900 rounded-2xl shadow-xl border border-gray-100 disabled:opacity-30 transition-all" title="上移">
+            <MoveUp className="w-5 h-5"/>
+        </button>
+        <button onClick={() => onMove(index, 'down')} disabled={isLast} className="p-3 bg-white text-gray-400 hover:text-gray-900 rounded-2xl shadow-xl border border-gray-100 disabled:opacity-30 transition-all" title="下移">
+            <MoveDown className="w-5 h-5"/>
+        </button>
+    </div>
+);
+
+// --- 通用页面渲染组件 (RenderPageContent) ---
+// 核心逻辑: 这个组件被"侧边栏缩略图"和"中间主编辑区"复用，确保所见即所得。
 const RenderPageContent: React.FC<{ 
   section: DocumentSection; 
   config: ProposalConfig; 
   totalAssets: number; 
   pieData: any[]; 
   backtestData: any[];
-  isThumbnail?: boolean;
+  isThumbnail?: boolean; // 是否为缩略图模式 (如果是，则禁用交互)
   onUpdateSection?: (id: string, updates: Partial<DocumentSection>) => void;
   onUpdateConfig?: (updates: Partial<ProposalConfig>) => void;
   generatingId?: string | null;
@@ -45,32 +160,20 @@ const RenderPageContent: React.FC<{
   onUpdateSection, onUpdateConfig, generatingId, onGenerateAI 
 }) => {
   
-  const PageHeader = ({ title, sub }: { title: string, sub: string }) => (
-    <div className="flex justify-between items-end border-b-2 border-[#e11d21] pb-2 mb-8">
-        <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
-        <span className="text-gray-400 text-sm uppercase tracking-wider font-light">{sub}</span>
-    </div>
-  );
-
-  // Common padding wrapper to ensure consistency between thumb and full view
-  const PageWrapper = ({ children, className = "", padding = "p-[20mm]" }: { children?: React.ReactNode, className?: string, padding?: string }) => (
-    <div className={`flex flex-col h-full w-full relative overflow-hidden bg-white ${padding} ${className}`}>
-        {children}
-    </div>
-  );
-
   return (
     <div className={`flex flex-col h-full w-full flex-1 ${isThumbnail ? 'select-none pointer-events-none' : ''}`}>
+      
+      {/* --- 1. 封面页 (COVER) --- */}
       {section.type === 'COVER' && (
           <PageWrapper padding="p-[30mm]">
-              {/* Background Accents */}
+              {/* 背景装饰图形 */}
               <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gray-50 rounded-bl-full -z-10 opacity-60"></div>
               <div 
                 className="absolute bottom-0 left-0 w-full h-[400px] bg-gradient-to-tr from-[#e11d21] to-[#ff5252] -z-10" 
                 style={{ clipPath: 'polygon(0 100%, 100% 100%, 100% 0, 0 100%)' }}
               ></div>
               
-              {/* Logo/Header */}
+              {/* 公司 Logo 展示 */}
               <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-[#e11d21] rotate-45 flex items-center justify-center shadow-lg shadow-red-200">
                     <div className="w-6 h-6 border-2 border-white -rotate-45"></div>
@@ -78,7 +181,7 @@ const RenderPageContent: React.FC<{
                   <div className="text-3xl font-black tracking-widest text-gray-800 uppercase italic">SDIC Trust</div>
               </div>
 
-              {/* Main Title */}
+              {/* 封面核心内容区 */}
               <div className="text-center mt-48 flex flex-col items-center flex-1">
                   <h1 className="text-7xl font-black text-gray-900 tracking-tighter mb-16 leading-[0.9]">
                     投资规划建议书
@@ -87,12 +190,13 @@ const RenderPageContent: React.FC<{
                   
                   <div className="text-3xl text-gray-700 font-medium mb-4 flex items-center justify-center">
                       敬呈 
+                      {/* 数据绑定: 客户姓名 (config.clientName) */}
                       {!isThumbnail ? (
                         <input 
                           type="text" 
                           value={config.clientName} 
                           onChange={e => onUpdateConfig?.({ clientName: e.target.value })} 
-                          className="text-4xl font-black border-b-4 border-gray-900 pb-2 mx-4 text-center w-64 bg-transparent focus:outline-none focus:border-[#e11d21] placeholder-gray-100 transition-colors"
+                          className="text-4xl font-black border-b-4 border-gray-900 pb-2 mx-4 text-center w-64 bg-transparent focus:outline-none focus:border-[#e11d21] placeholder-gray-100 transition-colors print:border-none print:placeholder-transparent"
                           placeholder="客户姓名"
                         />
                       ) : (
@@ -104,7 +208,7 @@ const RenderPageContent: React.FC<{
                   </div>
               </div>
 
-              {/* Footer */}
+              {/* 封面底部信息 */}
               <div className="mt-auto mb-12 flex justify-between items-end relative z-10">
                   <div className="text-white/90">
                       <div className="text-sm font-bold uppercase tracking-[0.4em] mb-1 opacity-70">Privilege & Professional</div>
@@ -112,34 +216,41 @@ const RenderPageContent: React.FC<{
                   </div>
                   <div className="text-right text-white/80 space-y-2">
                       <div className="text-[10px] uppercase tracking-[0.3em] font-black opacity-60">Authorized Manager</div>
+                      {/* 数据绑定: 理财师姓名 (config.managerName) */}
                       <div className="font-black text-lg">{config.managerName}</div>
+                      {/* 数据绑定: 报告日期 (config.date) */}
                       <div className="text-xs font-mono font-bold">{config.date}</div>
                   </div>
               </div>
           </PageWrapper>
       )}
 
+      {/* --- 2. 资产配置页 (DEMAND_ALLOCATION) --- */}
       {section.type === 'DEMAND_ALLOCATION' && (
           <PageWrapper>
               <PageHeader title="一、配置模型与资产全景" sub="Global Asset Allocation" />
               
               <div className="grid grid-cols-2 gap-8 mb-12">
+                  {/* 左上: 客户画像卡片 */}
                   <div className="bg-gray-50 rounded-[30px] p-8 border border-gray-100 flex flex-col justify-between shadow-inner">
                       <div className="flex items-center gap-5 mb-8">
+                          {/* 客户首字母头像 */}
                           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-black shadow-xl shadow-indigo-100">{config.clientName?.[0] || 'C'}</div>
                           <div>
                               <div className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Target Profile</div>
+                              {/* 数据绑定: 客户姓名 */}
                               <h3 className="text-2xl font-black text-gray-900 leading-tight">{config.clientName} 贵宾客户</h3>
                           </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                           <div className="p-5 bg-white rounded-2xl shadow-sm border border-gray-100">
                               <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5"><Search className="w-3 h-3"/> 风险承受</div>
+                              {/* 数据绑定: 风险等级 (config.riskLevel) */}
                               {!isThumbnail ? (
                                 <select 
                                   value={config.riskLevel} 
                                   onChange={e => onUpdateConfig?.({ riskLevel: e.target.value })} 
-                                  className="w-full text-lg font-black text-[#e11d21] bg-transparent border-none p-0 focus:ring-0 appearance-none cursor-pointer"
+                                  className="w-full text-lg font-black text-[#e11d21] bg-transparent border-none p-0 focus:ring-0 appearance-none cursor-pointer print:appearance-none"
                                 >
                                   <option>保守型</option><option>稳健型</option><option>平衡型</option><option>积极型</option><option>激进型</option>
                                 </select>
@@ -149,11 +260,12 @@ const RenderPageContent: React.FC<{
                           </div>
                           <div className="p-5 bg-white rounded-2xl shadow-sm border border-gray-100">
                               <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5"><Info className="w-3 h-3"/> 投资期限</div>
+                              {/* 数据绑定: 投资期限 (config.investmentHorizon) */}
                               {!isThumbnail ? (
                                 <input 
                                   value={config.investmentHorizon} 
                                   onChange={e => onUpdateConfig?.({ investmentHorizon: e.target.value })} 
-                                  className="w-full text-lg font-black text-gray-800 bg-transparent border-none p-0 focus:ring-0"
+                                  className="w-full text-lg font-black text-gray-800 bg-transparent border-none p-0 focus:ring-0 print:border-none"
                                 />
                               ) : (
                                 <div className="text-lg font-black text-gray-800 truncate">{config.investmentHorizon}</div>
@@ -162,8 +274,10 @@ const RenderPageContent: React.FC<{
                       </div>
                   </div>
                   
+                  {/* 右上: 总资产展示卡片 */}
                   <div className="bg-[#fff9f9] rounded-[30px] p-8 border border-[#fed7d7] flex flex-col justify-center items-center relative overflow-hidden shadow-inner">
                       <div className="text-xs text-[#e11d21] font-black uppercase tracking-[0.3em] mb-3 z-10 opacity-70">Total Portfolio Value</div>
+                      {/* 数据绑定: 总资产金额 (totalAssets - 自动计算) */}
                       <div className="text-5xl font-black text-gray-900 font-mono z-10 tracking-tighter">
                           ¥{totalAssets.toLocaleString()} <span className="text-xl font-medium">万</span>
                       </div>
@@ -172,12 +286,14 @@ const RenderPageContent: React.FC<{
               </div>
 
               <div className="flex-1 flex gap-12 overflow-hidden">
+                  {/* 左下: 资产配置饼图 */}
                   <div className="w-1/2 flex flex-col">
                       <h4 className="text-sm font-black text-gray-800 mb-8 flex items-center gap-3">
                           <div className="w-1.5 h-6 bg-[#e11d21] rounded-full"></div> 组合权重分析
                       </h4>
                       <div className="h-[350px] w-full relative">
                           <ResponsiveContainer width="100%" height="100%">
+                              {/* 图表数据: pieData (从 assets 计算得出) */}
                               <PieChart>
                                   <Pie data={pieData} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={6} dataKey="value" stroke="none" isAnimationActive={!isThumbnail}>
                                       {pieData.map((entry, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
@@ -191,6 +307,7 @@ const RenderPageContent: React.FC<{
                       </div>
                   </div>
                   
+                  {/* 右下: 资产明细列表 */}
                   <div className="w-1/2 overflow-hidden">
                       <h4 className="text-sm font-black text-gray-800 mb-8 flex items-center gap-3">
                           <div className="w-1.5 h-6 bg-[#e11d21] rounded-full"></div> 配置清单详情
@@ -201,6 +318,7 @@ const RenderPageContent: React.FC<{
                               return (
                                   <div key={i} className="flex items-center justify-between p-4 bg-white rounded-2xl border-2 border-gray-50 group hover:border-indigo-100 transition-all shadow-sm">
                                       <div className="flex flex-col min-w-0 pr-2 flex-1">
+                                          {/* 数据绑定: 基金选择 (config.assets[i].fundId) */}
                                           {!isThumbnail ? (
                                             <select 
                                                 value={a.fundId} 
@@ -219,6 +337,7 @@ const RenderPageContent: React.FC<{
                                       <div className="flex items-center gap-4 shrink-0">
                                           <div className="text-right">
                                               <div className="flex items-center gap-1 justify-end">
+                                                  {/* 数据绑定: 配置金额 (config.assets[i].amount) */}
                                                   {!isThumbnail ? (
                                                     <input 
                                                       type="number" 
@@ -226,15 +345,17 @@ const RenderPageContent: React.FC<{
                                                       onChange={e => {
                                                           const n = [...config.assets]; n[i] = {...n[i], amount: Number(e.target.value)}; onUpdateConfig?.({ assets: n });
                                                       }} 
-                                                      className="w-20 text-right text-base font-black text-gray-900 bg-transparent border-none p-0 focus:ring-0 font-mono"
+                                                      className="w-20 text-right text-base font-black text-gray-900 bg-transparent border-none p-0 focus:ring-0 font-mono print:border-none"
                                                     />
                                                   ) : (
                                                     <span className="text-base font-black text-gray-900 font-mono">{a.amount}</span>
                                                   )}
                                                   <span className="text-[10px] text-gray-400 font-bold uppercase">万</span>
                                               </div>
+                                              {/* 自动计算占比 */}
                                               <div className="text-[11px] font-black font-mono text-indigo-600/60">{totalAssets > 0 ? ((a.amount/totalAssets)*100).toFixed(1) : 0}%</div>
                                           </div>
+                                          {/* 操作: 删除资产项 */}
                                           {!isThumbnail && (
                                             <button onClick={() => {
                                                 const n = [...config.assets]; n.splice(i, 1); onUpdateConfig?.({ assets: n });
@@ -246,6 +367,7 @@ const RenderPageContent: React.FC<{
                                   </div>
                               );
                           })}
+                          {/* 操作: 新增资产项按钮 */}
                           {!isThumbnail && (
                             <button onClick={() => onUpdateConfig?.({ assets: [...config.assets, {fundId: '1', amount: 100}] })} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-xs font-black hover:bg-gray-50 hover:border-indigo-200 hover:text-indigo-400 transition-all flex items-center justify-center gap-2 print:hidden uppercase tracking-widest">
                                 <Plus className="w-4 h-4"/> 插入资产项
@@ -257,6 +379,7 @@ const RenderPageContent: React.FC<{
           </PageWrapper>
       )}
 
+      {/* --- 3. 策略/文本页 (STRATEGY / CUSTOM_TEXT) --- */}
       {(section.type === 'STRATEGY' || section.type === 'CUSTOM_TEXT') && (
           <PageWrapper>
               <PageHeader 
@@ -264,6 +387,7 @@ const RenderPageContent: React.FC<{
                   sub={section.type === 'STRATEGY' ? "Strategy Insights" : "Customized Content"} 
               />
               
+              {/* 如果是自定义页，允许编辑标题 */}
               {section.type === 'CUSTOM_TEXT' && (
                  !isThumbnail ? (
                   <input 
@@ -287,6 +411,7 @@ const RenderPageContent: React.FC<{
                               {section.type === 'STRATEGY' ? '核心投研结论' : '补充内容'}
                           </h4>
                       </div>
+                      {/* AI 生成按钮 (仅策略页可用) */}
                       {section.type === 'STRATEGY' && !isThumbnail && (
                           <button onClick={() => onGenerateAI?.(section.id)} disabled={generatingId === section.id} className="print:hidden bg-white border-2 border-red-100 text-[#e11d21] px-6 py-2.5 rounded-2xl hover:bg-red-50 flex items-center gap-3 text-sm font-black shadow-sm transition-all active:scale-95">
                              {generatingId === section.id ? <div className="w-4 h-4 border-3 border-red-500 border-t-transparent animate-spin rounded-full"></div> : <Sparkles className="w-4.5 h-4.5"/>}
@@ -295,6 +420,7 @@ const RenderPageContent: React.FC<{
                       )}
                   </div>
                   
+                  {/* 数据绑定: 文本内容 (section.content) */}
                   {!isThumbnail ? (
                     <textarea 
                         value={section.content}
@@ -316,6 +442,7 @@ const RenderPageContent: React.FC<{
                     </div>
                   )}
                   
+                  {/* 打印专用文本展示 (隐藏textarea) */}
                   {!isThumbnail && (
                      <div className="hidden print:block text-gray-700 text-xl leading-[2.2] text-justify whitespace-pre-wrap relative z-10 font-light p-0">
                         {section.content?.split('\n').map((line, i) => (
@@ -333,6 +460,7 @@ const RenderPageContent: React.FC<{
           </PageWrapper>
       )}
 
+      {/* --- 4. 业绩回测页 (BACKTEST) --- */}
       {section.type === 'BACKTEST' && (
           <PageWrapper>
               <PageHeader title="三、模拟组合业绩追溯" sub="Historical Backtest" />
@@ -348,6 +476,7 @@ const RenderPageContent: React.FC<{
                           <div className="flex items-center gap-3"><div className="w-6 h-2 bg-gray-300 rounded-full border-dashed"></div><span className="text-xs font-black text-gray-600 uppercase tracking-widest">市场基准</span></div>
                       </div>
                   </div>
+                  {/* 数据绑定: 回测图表数据 (backtestData) */}
                   <div className="flex-1 relative z-10">
                       <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={backtestData} margin={{top: 0, right: 10, left: 0, bottom: 0}}>
@@ -371,6 +500,7 @@ const RenderPageContent: React.FC<{
           </PageWrapper>
       )}
 
+      {/* --- 5. 免责声明页 (DISCLAIMER) --- */}
       {section.type === 'DISCLAIMER' && (
           <PageWrapper>
             <div className="border-t-[12px] border-[#e11d21] pt-20 flex-1">
@@ -389,6 +519,7 @@ const RenderPageContent: React.FC<{
             </div>
             
             <div className="mt-40 grid grid-cols-2 gap-40 pb-16">
+                  {/* 模拟签名区域 */}
                   <div className="text-center group/sign cursor-pointer">
                       <div className="h-24 flex flex-col justify-end items-center border-b-2 border-gray-100 group-hover/sign:border-indigo-600 transition-all duration-500 pb-4">
                           <span className="text-gray-300 font-serif italic mb-2 opacity-0 group-hover/sign:opacity-100 transform translate-y-2 group-hover/sign:translate-y-0 transition-all">Digital Signature Secured</span>
@@ -408,7 +539,9 @@ const RenderPageContent: React.FC<{
   );
 };
 
+// --- 主组件: 建议书生成器 ---
 const ProposalGenerator: React.FC = () => {
+  // 核心状态: 建议书配置数据
   const [config, setConfig] = useState<ProposalConfig>({
       clientName: '何芬',
       managerName: '何雅婷',
@@ -431,13 +564,12 @@ const ProposalGenerator: React.FC = () => {
   });
 
   const [generatingId, setGeneratingId] = useState<string | null>(null);
-  const [openDropdownIndex, setOpenDropdownIndex] = useState<number | null>(null);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [activePageId, setActivePageId] = useState<string | null>(null);
   
   const pageRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
-  // Calculations
+  // 动态计算总资产
   const totalAssets = useMemo(() => config.assets.reduce((sum, a) => sum + a.amount, 0), [config.assets]);
   
   useEffect(() => {
@@ -446,6 +578,7 @@ const ProposalGenerator: React.FC = () => {
       }
   }, [totalAssets]);
 
+  // 动态计算饼图数据 (按基金类型聚合)
   const pieData = useMemo(() => {
       const typeMap: {[key: string]: number} = {};
       config.assets.forEach(a => {
@@ -456,10 +589,12 @@ const ProposalGenerator: React.FC = () => {
       return Object.entries(typeMap).map(([name, value]) => ({ name, value }));
   }, [config.assets]);
 
+  // 动态计算回测数据
   const backtestData = useMemo(() => calculatePortfolioHistory(config.assets, 365), [config.assets]);
 
-  // --- ACTIONS ---
+  // --- 交互逻辑 ---
   
+  // 新增页面
   const handleAddSection = (index: number, type: SectionType) => {
       const newId = `sec-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       const newSection: DocumentSection = {
@@ -471,15 +606,16 @@ const ProposalGenerator: React.FC = () => {
       const newSections = [...config.sections];
       newSections.splice(index + 1, 0, newSection);
       setConfig({ ...config, sections: newSections });
-      setOpenDropdownIndex(null);
       setTimeout(() => scrollToPage(newId), 100);
   };
 
+  // 删除页面
   const handleRemoveSection = (id: string) => {
       if (config.sections.length <= 1) return;
       setConfig({ ...config, sections: config.sections.filter(s => s.id !== id) });
   };
 
+  // 移动页面顺序
   const handleMoveSection = (index: number, direction: 'up' | 'down') => {
       const newSections = [...config.sections];
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -488,6 +624,7 @@ const ProposalGenerator: React.FC = () => {
       setConfig({ ...config, sections: newSections });
   };
 
+  // 更新页面内容
   const updateSection = (id: string, updates: Partial<DocumentSection>) => {
       setConfig({
           ...config,
@@ -495,6 +632,7 @@ const ProposalGenerator: React.FC = () => {
       });
   };
 
+  // 调用 AI 生成策略
   const handleGenerateAI = async (id: string) => {
       setGeneratingId(id);
       try {
@@ -505,6 +643,7 @@ const ProposalGenerator: React.FC = () => {
       }
   };
 
+  // 复制页面
   const handleDuplicateSection = (index: number) => {
       const original = config.sections[index];
       const newId = `sec-copy-${Date.now()}`;
@@ -515,85 +654,15 @@ const ProposalGenerator: React.FC = () => {
       setTimeout(() => scrollToPage(newId), 100);
   };
 
+  // 滚动定位
   const scrollToPage = (id: string) => {
       setActivePageId(id);
       pageRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  // --- RENDERING HELPERS ---
-
-  const AddSectionTrigger = ({ index }: { index: number }) => {
-    const isOpen = openDropdownIndex === index;
-    
-    return (
-      <div className={`relative h-12 flex items-center justify-center transition-all z-40 print:hidden ${isOpen ? 'opacity-100' : 'opacity-0 hover:opacity-100'}`}>
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-gray-300"></div></div>
-          <div className="relative flex gap-2 bg-white border border-gray-200 shadow-lg rounded-full px-4 py-1.5 ring-4 ring-gray-100/50">
-              <button 
-                onClick={() => handleAddSection(index, 'CUSTOM_TEXT')} 
-                className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-indigo-600 transition-colors"
-              >
-                  <Plus className="w-4 h-4"/> 插入新页
-              </button>
-              <div className="w-px h-3 bg-gray-200 self-center"></div>
-              <div className="relative">
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenDropdownIndex(isOpen ? null : index);
-                    }}
-                    className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${isOpen ? 'text-indigo-600' : 'text-gray-700 hover:text-indigo-600'}`}
-                  >
-                      更多模块 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}/>
-                  </button>
-                  
-                  {isOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setOpenDropdownIndex(null)}></div>
-                      <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-white border border-gray-100 shadow-2xl rounded-2xl p-2 min-w-[140px] z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                          <button onClick={() => handleAddSection(index, 'STRATEGY')} className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-3 transition-colors">
-                            <Quote className="w-4 h-4 opacity-70"/> 策略观点页
-                          </button>
-                          <button onClick={() => handleAddSection(index, 'BACKTEST')} className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-3 transition-colors">
-                            <TrendingUp className="w-4 h-4 opacity-70"/> 历史回测页
-                          </button>
-                          <button onClick={() => handleAddSection(index, 'DEMAND_ALLOCATION')} className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-3 transition-colors">
-                            <Layout className="w-4 h-4 opacity-70"/> 资产配置页
-                          </button>
-                          <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                          <button onClick={() => handleAddSection(index, 'COVER')} className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-3 transition-colors">
-                            <FileText className="w-4 h-4 opacity-70"/> 封面页
-                          </button>
-                      </div>
-                    </>
-                  )}
-              </div>
-          </div>
-      </div>
-    );
-  };
-
-  const SectionControls = ({ section, index }: { section: DocumentSection, index: number }) => (
-    <div className="absolute -right-20 top-0 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden sticky top-32 z-30">
-        <button onClick={() => handleRemoveSection(section.id)} className="p-3 bg-white text-gray-400 hover:text-red-500 rounded-2xl shadow-xl border border-gray-100 transition-all hover:scale-110 active:scale-95" title="删除当前页">
-            <Trash2 className="w-5 h-5"/>
-        </button>
-        <button onClick={() => handleDuplicateSection(index)} className="p-3 bg-white text-gray-400 hover:text-indigo-500 rounded-2xl shadow-xl border border-gray-100 transition-all hover:scale-110 active:scale-95" title="复制当前页">
-            <Copy className="w-5 h-5"/>
-        </button>
-        <div className="w-full h-px bg-gray-100 my-1"></div>
-        <button onClick={() => handleMoveSection(index, 'up')} disabled={index === 0} className="p-3 bg-white text-gray-400 hover:text-gray-900 rounded-2xl shadow-xl border border-gray-100 disabled:opacity-30 transition-all" title="上移">
-            <MoveUp className="w-5 h-5"/>
-        </button>
-        <button onClick={() => handleMoveSection(index, 'down')} disabled={index === config.sections.length - 1} className="p-3 bg-white text-gray-400 hover:text-gray-900 rounded-2xl shadow-xl border border-gray-100 disabled:opacity-30 transition-all" title="下移">
-            <MoveDown className="w-5 h-5"/>
-        </button>
-    </div>
-  );
-
   return (
-    <div className="bg-gray-100 h-screen flex flex-col font-sans overflow-hidden">
-       {/* TOOLBAR */}
+    <div className="bg-gray-100 h-screen flex flex-col font-sans overflow-hidden print:h-auto print:overflow-visible print:bg-white">
+       {/* --- 顶部工具栏 --- */}
        <div className="z-50 bg-white border-b border-gray-200 px-8 py-3.5 flex justify-between items-center shadow-sm print:hidden shrink-0">
           <div className="flex items-center gap-6">
              <div className="flex items-center gap-3">
@@ -604,7 +673,7 @@ const ProposalGenerator: React.FC = () => {
                  </div>
              </div>
              <div className="h-8 w-px bg-gray-200 mx-2"></div>
-             {/* ZOOM CONTROLS */}
+             {/* 缩放控制 */}
              <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-200">
                  <button onClick={() => setZoomLevel(Math.max(50, zoomLevel - 10))} className="p-1.5 hover:bg-white rounded-lg text-gray-500 hover:text-indigo-600 transition-all"><ZoomOut className="w-4 h-4"/></button>
                  <span className="text-xs font-black text-gray-700 w-12 text-center font-mono">{zoomLevel}%</span>
@@ -619,8 +688,8 @@ const ProposalGenerator: React.FC = () => {
           </div>
        </div>
 
-       <div className="flex-1 flex overflow-hidden">
-          {/* SIDEBAR PREVIEW */}
+       <div className="flex-1 flex overflow-hidden print:block print:overflow-visible">
+          {/* --- 左侧: 页面大纲侧边栏 (缩略图) --- */}
           <div className="w-72 bg-white border-r border-gray-200 flex flex-col shrink-0 print:hidden shadow-inner">
              <div className="p-4 border-b border-gray-50 bg-gray-50/50 flex items-center justify-between">
                 <span className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -637,10 +706,7 @@ const ProposalGenerator: React.FC = () => {
                     >
                         <div className={`rounded-xl border-2 transition-all flex flex-col overflow-hidden shadow-sm ${activePageId === section.id ? 'border-indigo-600 ring-4 ring-indigo-50 shadow-xl' : 'border-gray-200 bg-white group-hover:border-gray-300'}`}>
                             
-                            {/* MINI PREVIEW CONTENT - SCALE MATCHED TO SIDEBAR WIDTH */}
-                            {/* Sidebar is 288px (w-72), minus 40px (p-5) = 248px available width.
-                                A4 is ~794px wide at 96dpi. 248 / 794 = 0.3123.
-                                We use 0.312 for perfect fit. */}
+                            {/* 缩略图渲染容器 - 通过 scale 缩小显示真实组件 */}
                             <div className="w-full aspect-[210/297] relative overflow-hidden bg-gray-100 border-b border-gray-200">
                                 <div 
                                     className="absolute top-0 left-1/2 bg-white shadow-lg origin-top"
@@ -675,23 +741,34 @@ const ProposalGenerator: React.FC = () => {
              </div>
           </div>
 
-          {/* MAIN DOCUMENT CANVAS */}
-          <div className="flex-1 overflow-y-auto bg-gray-100 p-8 custom-scrollbar scroll-smooth">
+          {/* --- 右侧: 主文档编辑区 --- */}
+          <div className="flex-1 overflow-y-auto bg-gray-100 p-8 custom-scrollbar scroll-smooth print:overflow-visible print:p-0 print:bg-white">
              <div 
-                className="flex flex-col items-center origin-top transition-transform duration-300"
+                className="flex flex-col items-center origin-top transition-transform duration-300 print:transform-none print:block"
                 style={{ transform: `scale(${zoomLevel / 100})` }}
              >
-                <AddSectionTrigger index={-1} />
+                {/* 顶部插入点 */}
+                <AddSectionTrigger index={-1} onAdd={handleAddSection} />
 
                 {config.sections.map((section, index) => (
                     <React.Fragment key={section.id}>
                         <div 
-                            ref={el => pageRefs.current[section.id] = el}
+                            ref={el => { pageRefs.current[section.id] = el; }}
                             className="group relative flex justify-center w-full"
                         >
-                            <SectionControls section={section} index={index} />
+                            {/* 侧边操作按钮 */}
+                            <SectionControls 
+                                sectionId={section.id} 
+                                index={index} 
+                                isFirst={index === 0} 
+                                isLast={index === config.sections.length - 1} 
+                                onRemove={handleRemoveSection} 
+                                onDuplicate={handleDuplicateSection} 
+                                onMove={handleMoveSection} 
+                            />
 
-                            <div className={`w-[210mm] mx-auto bg-white shadow-2xl my-6 print:shadow-none print:my-0 flex flex-col relative transition-all duration-500 print:break-after-page ${section.type === 'PAGE_BREAK' ? 'min-h-0 p-0' : 'min-h-[297mm] h-auto'}`}>
+                            {/* A4 纸张容器 */}
+                            <div className={`w-[210mm] mx-auto bg-white shadow-2xl my-6 print:shadow-none print:my-0 flex flex-col relative transition-all duration-500 print:break-after-page print:w-full print:mx-0 ${section.type === 'PAGE_BREAK' ? 'min-h-0 p-0' : 'min-h-[297mm] h-auto'}`}>
                                 <RenderPageContent 
                                   section={section}
                                   config={config}
@@ -706,7 +783,8 @@ const ProposalGenerator: React.FC = () => {
                             </div>
                         </div>
 
-                        <AddSectionTrigger index={index} />
+                        {/* 页面间插入点 */}
+                        <AddSectionTrigger index={index} onAdd={handleAddSection} />
                     </React.Fragment>
                 ))}
              </div>

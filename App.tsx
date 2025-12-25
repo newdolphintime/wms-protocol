@@ -722,7 +722,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
               margin={{top: 10, right: 10, left: 0, bottom: 0}} 
               stackOffset="sign"
               // Added interactive onClick handler using activeLabel or activePayload
-              onClick={(nextState) => {
+              onClick={(nextState: any) => {
                   if (nextState && nextState.activeLabel) {
                       // Reliable method: find data by X-axis label
                       const item = projectionData.find(p => p.displayDate === nextState.activeLabel);
