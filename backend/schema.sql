@@ -1,5 +1,4 @@
-DROP TABLE IF EXISTS fund_nav_history;
-DROP TABLE IF EXISTS funds;
+
 
 CREATE TABLE IF NOT EXISTS funds (
     id VARCHAR(36) PRIMARY KEY COMMENT 'Fund Unique Identifier',
@@ -27,3 +26,14 @@ CREATE TABLE IF NOT EXISTS fund_nav_history (
     INDEX idx_fund_date (fund_id, date),
     FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE CASCADE
 ) COMMENT='Historical NAV Data Table';
+
+CREATE TABLE IF NOT EXISTS fund_patch_rules (
+    id VARCHAR(255) PRIMARY KEY COMMENT 'Rule Unique Identifier',
+    target_fund_id VARCHAR(36) NOT NULL COMMENT 'Target Fund ID',
+    proxy_fund_id VARCHAR(36) NOT NULL COMMENT 'Proxy Fund ID',
+    start_date DATE NOT NULL COMMENT 'Patch Start Date',
+    end_date DATE NOT NULL COMMENT 'Patch End Date',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation Time',
+    FOREIGN KEY (target_fund_id) REFERENCES funds(id) ON DELETE CASCADE,
+    FOREIGN KEY (proxy_fund_id) REFERENCES funds(id) ON DELETE CASCADE
+) COMMENT='Fund NAV Patching Rules';

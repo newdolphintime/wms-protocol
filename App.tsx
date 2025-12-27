@@ -532,7 +532,7 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
   // const fund = MOCK_FUNDS.find(f => f.id === id); // Replaced by API
   const [fund, setFund] = useState<Fund | null>(null);
   const [historyData, setHistoryData] = useState<any[]>([]);
-  const [range, setRange] = useState<number | string>(365);
+  const [range, setRange] = useState<number | string>('SINCE_INCEPTION');
   const [rangeParams, setRangeParams] = useState<number>(365); // Computed days for API
   const [isPatchModalOpen, setIsPatchModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -561,7 +561,7 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
 
   // 2. Fetch History based on Range
   useEffect(() => {
-    let days = 365;
+    let days: number | undefined = 365;
     if (typeof range === 'number') {
       days = range;
     } else if (range === 'YTD') {
@@ -569,14 +569,15 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
       const startOfYear = new Date(now.getFullYear(), 0, 1);
       days = Math.ceil(Math.abs(now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
     } else if (range === 'SINCE_INCEPTION') {
-      days = 3650; // Default to 10 years for now as simple logic
+      days = undefined; // Fetch all
     }
-    setRangeParams(days);
+    setRangeParams(days || 36500);
 
     const fetchHistory = async () => {
       setHistoryLoading(true);
       try {
-        const response = await fetch(`/api/funds/${id}/history?days=${days}`);
+        const url = days ? `/api/funds/${id}/history?days=${days}` : `/api/funds/${id}/history`;
+        const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
           // Note: Backend returns pure history. 
@@ -596,25 +597,56 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
       }
     };
     if (id) fetchHistory();
-  }, [id, range]);
+  }, [id, range, patchRules]);
 
 
   if (loading) return <div className="p-8 text-center text-gray-500">正在加载基金详情...</div>;
   if (!fund) return <div className="p-8 text-center text-gray-500">未找到该基金</div>;
 
   // Client-side filtering still applies to the set of data we retrieved
-  const filteredData = historyData.filter(d => filterPatched ? d.isPatched : true);
+  const filteredData = historyData.filter(d => filterPatched ? d.is_patched : true);
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / PAGE_SIZE);
-  const paginatedData = [...filteredData].reverse().slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const paginatedData = [...filteredData].slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between"> <div className="flex items-center gap-4"> <Link to="/" className="p-2 hover:bg-gray-100 rounded-full text-gray-500"><ArrowLeft className="w-5 h-5" /></Link> <div> <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"> {fund.name} <span className="text-base font-normal text-gray-500 font-mono">({fund.code})</span> </h1> <div className="flex items-center gap-3 mt-1 text-sm text-gray-500"> <Badge color={getFundTypeColor(fund.type)}>{fund.type}</Badge> <span>基金经理: {fund.manager}</span> <span>成立日期: {fund.inceptionDate}</span> </div> </div> </div> <button onClick={() => setIsPatchModalOpen(true)} className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 shadow-sm text-sm font-medium"> <Wand2 className="w-4 h-4 mr-2 text-indigo-600" /> 配置净值补齐 </button> </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6"> <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-200 shadow-sm"> <div className="flex justify-between items-center mb-6"> <h3 className="font-bold text-gray-800">单位净值走势</h3> <div className="flex bg-gray-100 rounded-lg p-1"> {TIME_RANGES.filter(r => r.value !== 'SINCE_INCEPTION').map(r => (<button key={r.label} onClick={() => setRange(r.value)} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${range === r.value ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>{r.label}</button>))} </div> </div> <div className="h-[300px]"> <ResponsiveContainer width="100%" height="100%"> <LineChart data={historyData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}> <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" /> <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} minTickGap={30} /> <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} /> <RechartsTooltip /> <Legend /> <Line type="monotone" dataKey="nav_actual" name="真实净值" stroke="#4f46e5" strokeWidth={2} dot={false} connectNulls={false} /> <Line type="monotone" dataKey="nav_patched" name="补齐净值" stroke="#f59e0b" strokeWidth={2} strokeDasharray="4 4" dot={false} connectNulls={false} /> </LineChart> </ResponsiveContainer> </div> </div> <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm"> <h3 className="font-bold text-gray-800 mb-6">日涨跌幅</h3> <div className="h-[300px]"> <ResponsiveContainer width="100%" height="100%"> <BarChart data={historyData}> <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" /> <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} minTickGap={30} /> <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} /> <RechartsTooltip formatter={(val: number) => [`${val}%`, '涨跌幅']} /> <Bar dataKey="change"> {historyData.map((entry, index) => (<Cell key={`cell-${index}`} fill={(entry.change || 0) >= 0 ? '#ef4444' : '#22c55e'} />))} </Bar> </BarChart> </ResponsiveContainer> </div> </div> </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50"> <h3 className="font-bold text-gray-900">历史净值明细</h3> <div className="flex items-center gap-2"> <input type="checkbox" id="filterPatched" checked={filterPatched} onChange={(e) => setFilterPatched(e.target.checked)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /> <label htmlFor="filterPatched" className="text-sm text-gray-600 cursor-pointer">仅显示补齐数据</label> </div> </div>
-        <table className="min-w-full divide-y divide-gray-200"> <thead className="bg-gray-50"> <tr> <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日期</th> <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">单位净值</th> <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日涨跌幅</th> <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">数据来源</th> </tr> </thead> <tbody className="bg-white divide-y divide-gray-200"> {paginatedData.map((row, index) => (<tr key={index} className="hover:bg-gray-50"> <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">{row.date}</td> <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">{row.nav_actual?.toFixed(4) || '-'}</td> <td className="px-6 py-4 whitespace-nowrap text-sm"> <span className={`font-medium ${(row.change || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}> {(row.change || 0) > 0 ? '+' : ''}{row.change}% </span> </td> <td className="px-6 py-4 whitespace-nowrap text-sm"> {row.isPatched ? (<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800"> <Wand2 className="w-3 h-3 mr-1" /> 补齐 ({row.patchMethod}) </span>) : (<span className="text-gray-500">真实数据</span>)} </td> </tr>))} </tbody> </table>
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日期</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">单位净值</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日涨跌幅</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">是否补齐</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">来源产品</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {paginatedData.map((row, index) => (
+              <tr key={index} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">{row.date}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">{row.nav_actual?.toFixed(4) || '-'}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <span className={`font-medium ${(row.change || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}> {(row.change || 0) > 0 ? '+' : ''}{row.change}% </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {row.is_patched ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">是</span>
+                  ) : (
+                    <span className="text-gray-400">否</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {row.is_patched ? (row.patch_fund_name || row.patch_fund_id) : '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
         <div className="bg-white px-4 py-3 border-t border-gray-200 flex items-center justify-between sm:px-6"> <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between"> <div> <p className="text-sm text-gray-700"> 显示 <span className="font-medium">{(currentPage - 1) * PAGE_SIZE + 1}</span> 到 <span className="font-medium">{Math.min(currentPage * PAGE_SIZE, filteredData.length)}</span> 条，共 <span className="font-medium">{filteredData.length}</span> 条 </p> </div> <div> <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination"> <button onClick={() => setCurrentPage(c => Math.max(1, c - 1))} disabled={currentPage === 1} className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"> 上一页 </button> <button onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))} disabled={currentPage === totalPages} className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"> 下一页 </button> </nav> </div> </div> </div>
       </div>
       {fund && <PatchConfigModal isOpen={isPatchModalOpen} onClose={() => setIsPatchModalOpen(false)} patchRules={patchRules} onAddRule={onAddPatchRule} onRemoveRule={onRemovePatchRule} allFunds={MOCK_FUNDS} comparisonStartDate={new Date(new Date().setDate(new Date().getDate() - (typeof range === 'number' ? range : 365))).toISOString().split('T')[0]} />}
@@ -885,8 +917,29 @@ const App: React.FC = () => {
   const [patchRules, setPatchRules] = useState<PatchRule[]>([]);
   const [portfolio, setPortfolio] = useState<ClientPortfolio>(MOCK_PORTFOLIO);
 
-  const handleAddPatchRule = (rule: PatchRule) => {
-    setPatchRules(prev => [...prev, rule]);
+  const handleAddPatchRule = async (rule: PatchRule) => {
+    try {
+      const payload = {
+        id: rule.id,
+        target_fund_id: rule.targetFundId,
+        proxy_fund_id: rule.proxyFundId,
+        start_date: rule.startDate,
+        end_date: rule.endDate
+      };
+
+      const response = await fetch('/api/patch-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (response.ok) {
+        setPatchRules(prev => [...prev, rule]);
+      } else {
+        console.error("Failed to add patch rule");
+      }
+    } catch (e) {
+      console.error("Error adding patch rule", e);
+    }
   };
 
   const handleRemovePatchRule = (id: string) => {
