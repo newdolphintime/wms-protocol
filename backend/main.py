@@ -1,10 +1,11 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 from datetime import date
 import os
+import json
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -56,6 +57,41 @@ class Fund(BaseModel):
 
     class Config:
         from_attributes = True
+
+class RedemptionRule(BaseModel):
+    ruleType: str
+    openDay: Optional[int] = None
+    settlementDays: int
+    lockupEndDate: Optional[str] = None
+    maturityDate: Optional[str] = None
+
+class HoldingBase(BaseModel):
+    id: str
+    accountId: str
+    fundId: Optional[str] = None
+    isExternal: bool = False
+    externalName: Optional[str] = None
+    externalType: Optional[str] = None
+    externalNav: Optional[float] = None
+    externalNavDate: Optional[str] = None
+    shares: float
+    avgCost: float
+    redemptionRule: Optional[RedemptionRule] = None
+
+class Holding(HoldingBase):
+    pass
+
+class Account(BaseModel):
+    id: str
+    name: str
+    type: str # PERSONAL, FAMILY_TRUST
+    cashBalance: float
+    holdings: List[Holding] = []
+
+class ClientPortfolio(BaseModel):
+    id: str
+    clientName: str
+    accounts: List[Account] = []
 
 def get_db_connection():
     try:
@@ -547,6 +583,149 @@ def add_patch_rule(rule: PatchRule):
             cursor.close()
         if 'conn' in locals():
             conn.close()
+
+@app.get("/api/portfolios/{client_id}", response_model=ClientPortfolio)
+def get_portfolio(client_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # 1. Get Client Info
+        cursor.execute("SELECT * FROM clients WHERE id = %s", (client_id,))
+        client = cursor.fetchone()
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+            
+        # 2. Get Accounts
+        cursor.execute("SELECT * FROM accounts WHERE client_id = %s", (client_id,))
+        accounts_db = cursor.fetchall()
+        
+        accounts_list = []
+        for acc in accounts_db:
+            # 3. Get Holdings for each account
+            cursor.execute("""
+                SELECT h.*, f.name as fund_name, f.type as fund_type
+                FROM holdings h
+                LEFT JOIN funds f ON h.fund_id = f.id
+                WHERE h.account_id = %s
+            """, (acc['id'],))
+            holdings_db = cursor.fetchall()
+            
+            holdings_list = []
+            for h in holdings_db:
+                # Parse config
+                redemption_rule = None
+                if h['redemption_config']:
+                    try:
+                        redemption_rule = json.loads(h['redemption_config'])
+                    except:
+                        pass
+                
+                holdings_list.append({
+                    "id": h['id'],
+                    "accountId": h['account_id'],
+                    "fundId": h['fund_id'],
+                    "isExternal": bool(h['is_external']),
+                    "externalName": h['external_name'],
+                    "externalType": h['external_type'],
+                    "externalNav": float(h['external_nav']) if h['external_nav'] is not None else None,
+                    "externalNavDate": str(h['external_nav_date']) if h['external_nav_date'] else None,
+                    "shares": float(h['shares']),
+                    "avgCost": float(h['avg_cost']),
+                    "redemptionRule": redemption_rule
+                })
+                
+            accounts_list.append({
+                "id": acc['id'],
+                "name": acc['name'],
+                "type": acc['type'],
+                "cashBalance": float(acc['cash_balance']),
+                "holdings": holdings_list
+            })
+            
+        return {
+            "id": client['id'],
+            "clientName": client['name'],
+            "accounts": accounts_list
+        }
+        
+    except mysql.connector.Error as err:
+        print(f"Error executing query: {err}")
+        raise HTTPException(status_code=500, detail="Database query failed")
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+class HoldingCreate(BaseModel):
+    id: str
+    accountId: str
+    fundId: Optional[str] = None
+    isExternal: bool = False
+    externalName: Optional[str] = None
+    externalType: Optional[str] = None
+    externalNav: Optional[float] = None
+    externalNavDate: Optional[str] = None
+    shares: float
+    avgCost: float
+    redemptionRule: Optional[RedemptionRule] = None
+
+@app.post("/api/holdings")
+def add_holding(holding: HoldingCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Prepare JSON config
+        config_json = None
+        if holding.redemptionRule:
+            config_json = holding.redemptionRule.model_dump_json()
+            
+        query = """
+        INSERT INTO holdings (
+            id, account_id, fund_id, is_external, external_name, external_type, 
+            external_nav, external_nav_date, shares, avg_cost, redemption_config
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (
+            holding.id,
+            holding.accountId,
+            holding.fundId,
+            holding.isExternal,
+            holding.externalName,
+            holding.externalType,
+            holding.externalNav,
+            holding.externalNavDate,
+            holding.shares,
+            holding.avgCost,
+            config_json
+        ))
+        conn.commit()
+        return {"message": "Holding added successfully", "id": holding.id}
+    except mysql.connector.Error as err:
+        print(f"Error adding holding: {err}")
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.delete("/api/holdings/{holding_id}")
+def delete_holding(holding_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM holdings WHERE id = %s", (holding_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Holding not found")
+        conn.commit()
+        return {"message": "Holding deleted"}
+    except mysql.connector.Error as err:
+         conn.rollback()
+         raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
 
 if __name__ == "__main__":
     import uvicorn

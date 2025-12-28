@@ -55,3 +55,63 @@ A JSON array of `Fund` objects.
 | `description`  | `string` | *Used in analysis, not main table.* |
 
 ---
+
+### Portfolio / Holdings
+
+#### Get Client Portfolio
+**GET** `/api/portfolios/{client_id}`
+
+Fetches the complete portfolio hierarchy for a client, including accounts and holdings.
+
+**Response**: `ClientPortfolio` structure.
+```json
+{
+  "id": "client-001",
+  "clientName": "John Doe",
+  "accounts": [
+    {
+      "id": "acc-01",
+      "name": "Personal Account",
+      "type": "PERSONAL",
+      "cashBalance": 50000.00,
+      "holdings": [
+        {
+          "id": "h-01",
+          "fundId": "1",
+          "isExternal": false,
+          "shares": 1000,
+          "avgCost": 3.50,
+          "redemptionRule": { "ruleType": "DAILY", "settlementDays": 1 }
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Add Holding
+**POST** `/api/holdings`
+
+Adds a new holding (asset) to a specific account. Supports both system funds (via `fundId`) and external assets (via `isExternal=true`).
+
+**Request**:
+```json
+{
+  "id": "new-uuid",
+  "accountId": "acc-01",
+  "fundId": "1",  // Optional
+  "isExternal": false,
+  "shares": 500,
+  "avgCost": 4.00,
+  "redemptionRule": {
+      "ruleType": "MONTHLY",
+      "openDay": 15,
+      "settlementDays": 3
+  }
+}
+```
+
+#### Delete Holding
+**DELETE** `/api/holdings/{holding_id}`
+
+Removes a holding record.

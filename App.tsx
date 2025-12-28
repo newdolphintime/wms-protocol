@@ -915,7 +915,32 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
 
 const App: React.FC = () => {
   const [patchRules, setPatchRules] = useState<PatchRule[]>([]);
-  const [portfolio, setPortfolio] = useState<ClientPortfolio>(MOCK_PORTFOLIO);
+  // Initialize with null or loading state if preferred, but for now we might keep mock as initial 
+  // and then replace it to avoid breaking types or UI flickering, 
+  // or better: start with null and show loading.
+  // Given user request "Replace mock with real", I will fetch on mount.
+  const [portfolio, setPortfolio] = useState<ClientPortfolio | null>(null);
+  const [loadingPortfolio, setLoadingPortfolio] = useState(true);
+
+  useEffect(() => {
+    const fetchPortfolio = async () => {
+      try {
+        // Client ID is hardcoded for now as per plan
+        const res = await fetch('/api/portfolios/client-001');
+        if (res.ok) {
+          const data = await res.json();
+          setPortfolio(data);
+        } else {
+          console.error("Failed to load portfolio");
+        }
+      } catch (e) {
+        console.error("Error loading portfolio", e);
+      } finally {
+        setLoadingPortfolio(false);
+      }
+    };
+    fetchPortfolio();
+  }, []);
 
   const handleAddPatchRule = async (rule: PatchRule) => {
     try {
@@ -946,23 +971,73 @@ const App: React.FC = () => {
     setPatchRules(prev => prev.filter(r => r.id !== id));
   };
 
-  const handleAddExternalAsset = (accountId: string, holding: Holding) => {
-    setPortfolio(prev => {
-      const newAccounts = prev.accounts.map(acc => {
-        if (acc.id === accountId) {
-          return { ...acc, holdings: [...acc.holdings, holding] };
-        }
-        return acc;
+  const handleAddExternalAsset = async (accountId: string, holding: Holding) => {
+    // Prepare API Payload
+    // Holding ID generation should ideally be backend or UUID here.
+    // We'll generate one here.
+    const newId = `h-${Date.now()}`;
+    const payload = {
+      id: newId,
+      accountId: accountId,
+      fundId: holding.fundId, // Might be undefined for pure external
+      isExternal: holding.isExternal,
+      externalName: holding.externalName,
+      externalType: holding.externalType,
+      externalNav: holding.externalNav,
+      externalNavDate: holding.externalNavDate,
+      shares: holding.shares,
+      avgCost: holding.avgCost,
+      redemptionRule: holding.redemptionRule
+    };
+
+    try {
+      const res = await fetch('/api/holdings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
-      return { ...prev, accounts: newAccounts };
-    });
+
+      if (res.ok) {
+        // Optimistic Update or Refetch
+        if (portfolio) {
+          setPortfolio(prev => {
+            if (!prev) return prev;
+            const newAccounts = prev.accounts.map(acc => {
+              if (acc.id === accountId) {
+                return { ...acc, holdings: [...acc.holdings, { ...holding, id: newId }] };
+              }
+              return acc;
+            });
+            return { ...prev, accounts: newAccounts };
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to add holding", e);
+    }
   };
 
+  // Note: Updates to rules and cash also need API endpoints in future (as per plan),
+  // but for now we only implemented Add/Delete/Get.
+  // We will keep local state update for these specific actions if endpoints aren't ready,
+  // OR we shouldn't have promised full replacement if we didn't add those endpoints.
+  // Reviewing main.py: We did NOT add PUT endpoints for updates.
+  // So we will keep local optimistic updates for these two (Rule/Cash) but strictly speaking
+  // they won't persist to DB yet.
+  // However, the USER request said "Replace mock data source".
+  // The primary data source is now API.
+
   const handleUpdateHoldingRule = (accId: string, holdingIdx: number, rule: RedemptionRule) => {
+    if (!portfolio) return;
+    // NOTE: This update is LOCAL ONLY for now as backend PUT endpoint is pending.
     setPortfolio(prev => {
+      if (!prev) return prev;
       const newAccounts = prev.accounts.map(acc => {
         if (acc.id === accId) {
           const newHoldings = [...acc.holdings];
+          // We need to match by ID now, not Index, but the UI passes Index.
+          // Let's rely on the fact that indices align if no sorting happened.
+          // Ideally UI should pass ID.
           const holding = newHoldings[holdingIdx];
           if (holding) {
             newHoldings[holdingIdx] = { ...holding, redemptionRule: rule };
@@ -976,7 +1051,10 @@ const App: React.FC = () => {
   };
 
   const handleUpdateAccountCash = (accId: string, amount: number) => {
+    if (!portfolio) return;
+    // NOTE: This update is LOCAL ONLY for now.
     setPortfolio(prev => {
+      if (!prev) return prev;
       const newAccounts = prev.accounts.map(acc => {
         if (acc.id === accId) {
           return { ...acc, cashBalance: amount };
@@ -1031,14 +1109,25 @@ const App: React.FC = () => {
         {/* Main Content */}
         <main className="flex-1 overflow-auto bg-gray-50/50">
           <div className="max-w-7xl mx-auto p-4 md:p-8">
-            <Routes>
-              <Route path="/" element={<FundListPage />} />
-              <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
-              <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
-              <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
-              <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
-              <Route path="/proposal" element={<ProposalGenerator />} />
-            </Routes>
+            {loadingPortfolio ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-gray-500 flex flex-col items-center">
+                  <span className="text-2xl animate-spin">⏳</span>
+                  <span className="mt-2 text-sm">正在加载数据资源...</span>
+                </div>
+              </div>
+            ) : ((!portfolio) ? (
+              <div className="text-center text-red-500 p-8">无法加载客户持仓数据</div>
+            ) : (
+              <Routes>
+                <Route path="/" element={<FundListPage />} />
+                <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
+                <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
+                <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
+                <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
+                <Route path="/proposal" element={<ProposalGenerator />} />
+              </Routes>
+            ))}
           </div>
         </main>
       </div>

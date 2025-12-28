@@ -37,3 +37,48 @@ CREATE TABLE IF NOT EXISTS fund_patch_rules (
     FOREIGN KEY (target_fund_id) REFERENCES funds(id) ON DELETE CASCADE,
     FOREIGN KEY (proxy_fund_id) REFERENCES funds(id) ON DELETE CASCADE
 ) COMMENT='Fund NAV Patching Rules';
+
+CREATE TABLE IF NOT EXISTS clients (
+    id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
+    name VARCHAR(100) NOT NULL COMMENT 'Client Name',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+    id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
+    client_id VARCHAR(36) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    type VARCHAR(50) NOT NULL COMMENT 'Enum: PERSONAL, FAMILY_TRUST',
+    description VARCHAR(255),
+    cash_balance DECIMAL(15, 2) DEFAULT 0.00,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS holdings (
+    id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
+    account_id VARCHAR(36) NOT NULL,
+    
+    -- Link to internal Funds table (Nullable)
+    fund_id VARCHAR(36) NULL COMMENT 'If set, refers to system funds',
+    
+    -- External Asset Fields (Used if fund_id is NULL)
+    is_external BOOLEAN DEFAULT FALSE,
+    external_name VARCHAR(100),
+    external_type VARCHAR(50) COMMENT 'FundType Enum',
+    external_nav DECIMAL(10, 4),
+    external_nav_date DATE,
+    
+    -- Position Data
+    shares DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    avg_cost DECIMAL(10, 4) DEFAULT 0,
+    
+    -- Extensible Logic
+    redemption_config JSON COMMENT 'Stores RedemptionRule: ruleType, openDay, settlementDays, etc.',
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE SET NULL
+);
