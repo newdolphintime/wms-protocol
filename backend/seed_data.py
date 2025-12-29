@@ -7,6 +7,7 @@ DB_CONFIG = {
     'password': 'Zhangwei@123',
     'host': 'localhost',
     'database': 'wms',
+    'charset': 'utf8mb4'
 }
 
 def seed_data():

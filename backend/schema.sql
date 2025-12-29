@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS funds (
     inception_date DATE COMMENT 'Fund Inception Date',
     description TEXT COMMENT 'Fund Description and Investment Scope',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Record Creation Timestamp'
-) COMMENT='Fund Basic Information Table';
+) COMMENT='Fund Basic Information Table' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS fund_nav_history (
     id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Auto-increment Primary Key',
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS fund_nav_history (
     patch_fund_id VARCHAR(36) COMMENT 'Source Fund ID used for patching',
     INDEX idx_fund_date (fund_id, date),
     FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE CASCADE
-) COMMENT='Historical NAV Data Table';
+) COMMENT='Historical NAV Data Table' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS fund_patch_rules (
     id VARCHAR(255) PRIMARY KEY COMMENT 'Rule Unique Identifier',
@@ -36,13 +36,13 @@ CREATE TABLE IF NOT EXISTS fund_patch_rules (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation Time',
     FOREIGN KEY (target_fund_id) REFERENCES funds(id) ON DELETE CASCADE,
     FOREIGN KEY (proxy_fund_id) REFERENCES funds(id) ON DELETE CASCADE
-) COMMENT='Fund NAV Patching Rules';
+) COMMENT='Fund NAV Patching Rules' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS clients (
     id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
     name VARCHAR(100) NOT NULL COMMENT 'Client Name',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS accounts (
     id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     cash_balance DECIMAL(15, 2) DEFAULT 0.00,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
-);
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS holdings (
     id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
@@ -81,4 +81,4 @@ CREATE TABLE IF NOT EXISTS holdings (
     
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE SET NULL
-);
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

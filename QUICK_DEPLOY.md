@@ -1,0 +1,83 @@
+# 极速部署指南 (Quick Deploy)
+
+不需要复杂的 Nginx 和 Systemd 配置，只需要 5 步即可完成部署。
+
+## 原理
+Python 后端 (`backend/main.py`) 已被修改为可以直接运行 React 前端页面。你只需要运行一个 Python 进程即可。
+
+---
+
+## 步骤 1: 准备前端文件
+在服务器的项目根目录下运行：
+
+```bash
+# 1. 安装依赖
+npm install
+
+# 2. 构建前端 (生成 dist 目录)
+npm run build
+```
+**验证**: 运行 `ls -F`，确保可以看见 `dist/` 目录。如果缺少该目录，后续访问会报 404。
+
+## 步骤 2: 准备后端环境
+进入 backend 目录：
+
+```bash
+cd backend
+
+# 1. 安装 Python 依赖
+pip install -r requirements.txt
+```
+
+## 步骤 3: 数据库初始化 (首次部署或重置)
+**重要**: 此步骤会重置数据库。如果是更新部署且需保留数据，请跳过数据库创建和数据填充。
+
+1. **重建数据库 (使用 utf8mb4 支持中文)**:
+   ```bash
+   mysql -u root -p -e "DROP DATABASE IF EXISTS wms; CREATE DATABASE wms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+   ```
+
+2. **导入表结构**:
+   ```bash
+   # 导入新的表结构
+   mysql -u root -p wms < schema.sql
+   ```
+
+3. **导入初始数据**:
+   ```bash
+   # 运行数据填充脚本
+   python seed_data.py
+   ```
+
+## 步骤 4: 启动服务 (后台运行)
+在 `backend` 目录下执行：
+
+```bash
+# 1. 如果有旧服务在运行，先杀掉
+# ps -ef | grep main.py
+# kill <PID>
+
+# 2. 启动新服务 (日志输出到 server.log)
+nohup python3 main.py > server.log 2>&1 &
+```
+
+## 步骤 5: 配置防火墙/安全组
+确保腾讯云控制台的安全组规则允许 **TCP 8001** 端口的入站流量。
+
+1.  登录腾讯云控制台 > 云服务器 > 安全组。
+2.  添加入站规则：
+    *   **端口**: `8001`
+    *   **来源**: `0.0.0.0/0`
+    *   **策略**: `允许`
+
+---
+
+### 常用验证与维护
+
+- **访问网站**: `http://<服务器IP>:8001`
+- **查看日志**: `tail -f server.log`
+- **停止服务**: 
+  ```bash
+  ps -ef | grep main.py
+  kill <PID>
+  ```
