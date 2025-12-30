@@ -1,5 +1,4 @@
 
-
 CREATE TABLE IF NOT EXISTS funds (
     id VARCHAR(36) PRIMARY KEY COMMENT 'Fund Unique Identifier',
     code VARCHAR(10) NOT NULL COMMENT 'Fund Code (e.g., 510300)',
@@ -81,4 +80,23 @@ CREATE TABLE IF NOT EXISTS holdings (
     
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE SET NULL
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS recurring_rules (
+    id VARCHAR(50) PRIMARY KEY,
+    frequency VARCHAR(20) NOT NULL COMMENT 'Enum: MONTHLY, QUARTERLY, YEARLY',
+    count INT NOT NULL COMMENT 'Number of occurrences',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS cash_flows (
+    id VARCHAR(50) PRIMARY KEY,
+    date DATE NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL,
+    description VARCHAR(255),
+    type VARCHAR(10) NOT NULL COMMENT 'INFLOW or OUTFLOW',
+    recurring_rule_id VARCHAR(50) NULL,
+    related_holding_key VARCHAR(100) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (recurring_rule_id) REFERENCES recurring_rules(id) ON DELETE SET NULL
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

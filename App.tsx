@@ -676,7 +676,21 @@ const PortfolioPage: React.FC<{ portfolio: ClientPortfolio, patchRules: PatchRul
   );
 };
 const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (accId: string, holdingIdx: number, rule: RedemptionRule) => void, updateAccountCash: (accId: string, amount: number) => void }> = ({ portfolio, updateHoldingRule, updateAccountCash }) => {
-  const [cashFlows, setCashFlows] = useState<CashFlow[]>([{ id: '1', date: '2025-06-15', amount: 50000, description: '定期理财到期', type: 'INFLOW' }, { id: '2', date: '2025-07-01', amount: 200000, description: '子女海外学费', type: 'OUTFLOW' }]);
+  const [cashFlows, setCashFlows] = useState<CashFlow[]>([]);
+  // Fetch initial cash flows
+  useEffect(() => {
+    fetch('/api/cash-flows')
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        return res.json();
+      })
+      .then(data => {
+        // Ensure date is string YYYY-MM-DD
+        setCashFlows(data);
+      })
+      .catch(err => console.error("Error loading cash flows:", err));
+  }, []);
+
   const [targetDate, setTargetDate] = useState<string>(''); const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL'); const [monthlyExpenses, setMonthlyExpenses] = useState<number>(50000);
   const [planCategory, setPlanCategory] = useState<'GENERIC' | 'REDEMPTION' | 'DIVIDEND' | 'INSURANCE'>('GENERIC'); const [planAmount, setPlanAmount] = useState(''); const [planShares, setPlanShares] = useState(''); const [planDate, setPlanDate] = useState(''); const [planDesc, setPlanDesc] = useState(''); const [planType, setPlanType] = useState<'INFLOW' | 'OUTFLOW'>('OUTFLOW'); const [selectedProductId, setSelectedProductId] = useState(''); const [insuranceName, setInsuranceName] = useState(''); const [validationError, setValidationError] = useState<string | null>(null);
   const [isRecurring, setIsRecurring] = useState(false); const [recurFrequency, setRecurFrequency] = useState<Frequency>(Frequency.MONTHLY); const [recurCount, setRecurCount] = useState<number>(12);
@@ -761,8 +775,131 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
   const lockedDetails = useMemo(() => { const list: { name: string; value: number; reason: string }[] = []; const today = new Date(); today.setHours(0, 0, 0, 0); const accountsToAnalyze = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter((a) => a.id === selectedAccountId); accountsToAnalyze.forEach((account) => { account.holdings.forEach((h) => { let val = 0; let type = FundType.STRATEGY; let name = ''; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; name = h.externalName || '未命名资产'; } else { const f = MOCK_FUNDS.find((fund) => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; name = f.name; } } const availableDate = calculateAvailabilityDate(today, h, type); availableDate.setHours(0, 0, 0, 0); if (today.getTime() < availableDate.getTime()) { const diffTime = availableDate.getTime() - today.getTime(); const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); let reason = `预计T+${days}可用`; if (h.redemptionRule?.ruleType === 'FIXED_TERM' && h.redemptionRule.maturityDate) { reason = `到期自动赎回 (到期日: ${h.redemptionRule.maturityDate})`; } else if (h.redemptionRule?.lockupEndDate) { const lockupEnd = new Date(h.redemptionRule.lockupEndDate); lockupEnd.setHours(0, 0, 0, 0); if (today.getTime() < lockupEnd.getTime()) { reason = `处于锁定期 (至 ${h.redemptionRule.lockupEndDate})`; } else if (h.redemptionRule?.ruleType === 'MONTHLY') { const settlementDays = h.redemptionRule.settlementDays; const openDate = new Date(availableDate); openDate.setDate(openDate.getDate() - settlementDays); if (today.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`; } else { reason = `赎回结算中 (T+${days})`; } } } else if (h.redemptionRule?.ruleType === 'MONTHLY') { const settlementDays = h.redemptionRule.settlementDays; const openDate = new Date(availableDate); openDate.setDate(openDate.getDate() - settlementDays); if (today.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`; } else { reason = `赎回结算中 (T+${days})`; } } list.push({ name, value: val, reason }); } }); }); return list.sort((a, b) => b.value - a.value); }, [portfolio, selectedAccountId]);
   const healthMetrics = useMemo(() => { const currentCash = liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH]; const survivalMonths = monthlyExpenses > 0 ? (currentCash / monthlyExpenses).toFixed(1) : '∞'; let minBalance = Infinity; const lowLiquidityDates: { start: string, end: string }[] = []; let inLow = false; let startLow = ''; projectionData.forEach(p => { if (p.liquid < minBalance) minBalance = p.liquid; if (p.liquid < monthlyExpenses) { if (!inLow) { inLow = true; startLow = p.date; } } else { if (inLow) { inLow = false; lowLiquidityDates.push({ start: startLow, end: p.date }); } } }); if (inLow) lowLiquidityDates.push({ start: startLow, end: 'Period End' }); return { survivalMonths, minBalance, lowLiquidityDates }; }, [liquidityData, monthlyExpenses, projectionData]);
 
-  const addCashFlow = () => { if (planCategory === 'REDEMPTION') { if (!planShares || !planDate) return; } else { if (!planAmount || !planDate) return; } if (validationError) return; let finalAmount = 0; let finalDesc = planDesc; let finalType = planType; const relatedKey = (planCategory === 'REDEMPTION' || planCategory === 'DIVIDEND') ? selectedProductId : undefined; let settlementDays = 0; if (planCategory === 'REDEMPTION' && selectedHoldingData) { finalAmount = Number(planShares) * selectedHoldingData.currentNav; finalDesc = `[赎回] ${selectedHoldingData.displayName} (${planShares}份)`; finalType = 'INFLOW'; if (selectedHoldingData.redemptionRule) { settlementDays = selectedHoldingData.redemptionRule.settlementDays; } else { let type = FundType.STRATEGY; if (selectedHoldingData.isExternal) { type = selectedHoldingData.externalType || FundType.STRATEGY; } else { const f = MOCK_FUNDS.find(fund => fund.id === selectedHoldingData.fundId); if (f) type = f.type; } const tier = getLiquidityTier(type); settlementDays = getSettlementDays(tier); } } else if (planCategory === 'DIVIDEND' && selectedHoldingData) { finalAmount = Number(planAmount); finalDesc = `[分红] ${selectedHoldingData.displayName}`; finalType = 'INFLOW'; } else if (planCategory === 'INSURANCE') { finalAmount = Number(planAmount); finalDesc = `[保单] ${insuranceName}`; finalType = 'OUTFLOW'; } else { finalAmount = Number(planAmount); } const shiftDate = (baseDateStr: string, days: number) => { if (days === 0) return baseDateStr; const d = new Date(baseDateStr); d.setDate(d.getDate() + days); return d.toISOString().split('T')[0]; }; const descriptionWithDelay = settlementDays > 0 ? `${finalDesc} (预计T+${settlementDays}到账)` : finalDesc; const newFlows: CashFlow[] = []; const ruleId = isRecurring ? Date.now().toString() : undefined; if (isRecurring) { const [startYear, startMonth, startDay] = planDate.split('-').map(Number); for (let i = 0; i < recurCount; i++) { const current = new Date(startYear, startMonth - 1, startDay); if (recurFrequency === Frequency.MONTHLY) { current.setMonth(current.getMonth() + i); } else if (recurFrequency === Frequency.QUARTERLY) { current.setMonth(current.getMonth() + (i * 3)); } else if (recurFrequency === Frequency.YEARLY) { current.setFullYear(current.getFullYear() + i); } const baseDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`; const effectiveDate = shiftDate(baseDateStr, settlementDays); newFlows.push({ id: `${ruleId}_${i}`, date: effectiveDate, amount: Number(finalAmount), description: descriptionWithDelay, type: finalType, recurringRuleId: ruleId, relatedHoldingKey: relatedKey }); } } else { const effectiveDate = shiftDate(planDate, settlementDays); newFlows.push({ id: Date.now().toString(), date: effectiveDate, amount: Number(finalAmount), description: descriptionWithDelay, type: finalType, relatedHoldingKey: relatedKey }); } setCashFlows([...cashFlows, ...newFlows]); setPlanAmount(''); setPlanShares(''); setPlanDate(''); setPlanDesc(''); setIsRecurring(false); };
-  const handleDeleteCashFlow = (id: string) => { setCashFlows(current => current.filter(item => item.id !== id)); };
+  const addCashFlow = () => {
+    if (planCategory === 'REDEMPTION') { if (!planShares || !planDate) return; } else { if (!planAmount || !planDate) return; }
+    if (validationError) return;
+
+    let finalAmount = 0;
+    let finalDesc = planDesc;
+    let finalType = planType;
+    const relatedKey = (planCategory === 'REDEMPTION' || planCategory === 'DIVIDEND') ? selectedProductId : undefined;
+    let settlementDays = 0;
+
+    if (planCategory === 'REDEMPTION' && selectedHoldingData) {
+      finalAmount = Number(planShares) * selectedHoldingData.currentNav;
+      finalDesc = `[赎回] ${selectedHoldingData.displayName} (${planShares}份)`;
+      finalType = 'INFLOW';
+      if (selectedHoldingData.redemptionRule) {
+        settlementDays = selectedHoldingData.redemptionRule.settlementDays;
+      } else {
+        let type = FundType.STRATEGY;
+        if (selectedHoldingData.isExternal) {
+          type = selectedHoldingData.externalType || FundType.STRATEGY;
+        } else {
+          const f = MOCK_FUNDS.find(fund => fund.id === selectedHoldingData.fundId);
+          if (f) type = f.type;
+        }
+        const tier = getLiquidityTier(type);
+        settlementDays = getSettlementDays(tier);
+      }
+    } else if (planCategory === 'DIVIDEND' && selectedHoldingData) {
+      finalAmount = Number(planAmount);
+      finalDesc = `[分红] ${selectedHoldingData.displayName}`;
+      finalType = 'INFLOW';
+    } else if (planCategory === 'INSURANCE') {
+      finalAmount = Number(planAmount);
+      finalDesc = `[保单] ${insuranceName}`;
+      finalType = 'OUTFLOW';
+    } else {
+      finalAmount = Number(planAmount);
+    }
+
+    const shiftDate = (baseDateStr: string, days: number) => {
+      if (days === 0) return baseDateStr;
+      const d = new Date(baseDateStr);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().split('T')[0];
+    };
+
+    const descriptionWithDelay = settlementDays > 0 ? `${finalDesc} (预计T+${settlementDays}到账)` : finalDesc;
+    const newFlows: CashFlow[] = [];
+    const ruleId = isRecurring ? Date.now().toString() : undefined;
+
+    if (isRecurring) {
+      const [startYear, startMonth, startDay] = planDate.split('-').map(Number);
+      for (let i = 0; i < recurCount; i++) {
+        const current = new Date(startYear, startMonth - 1, startDay);
+        if (recurFrequency === Frequency.MONTHLY) {
+          current.setMonth(current.getMonth() + i);
+        } else if (recurFrequency === Frequency.QUARTERLY) {
+          current.setMonth(current.getMonth() + (i * 3));
+        } else if (recurFrequency === Frequency.YEARLY) {
+          current.setFullYear(current.getFullYear() + i);
+        }
+        const baseDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+        const effectiveDate = shiftDate(baseDateStr, settlementDays);
+        newFlows.push({
+          id: `${ruleId}_${i}`,
+          date: effectiveDate,
+          amount: Number(finalAmount),
+          description: descriptionWithDelay,
+          type: finalType,
+          recurringRuleId: ruleId,
+          relatedHoldingKey: relatedKey
+        });
+      }
+    } else {
+      const effectiveDate = shiftDate(planDate, settlementDays);
+      newFlows.push({
+        id: Date.now().toString(),
+        date: effectiveDate,
+        amount: Number(finalAmount),
+        description: descriptionWithDelay,
+        type: finalType,
+        relatedHoldingKey: relatedKey
+      });
+    }
+
+    // API Call
+    const payload = {
+      flows: newFlows,
+      rule: (isRecurring && ruleId) ? { id: ruleId, frequency: recurFrequency, count: recurCount } : undefined
+    };
+
+    fetch('/api/cash-flows/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('API Error');
+        return res.json();
+      })
+      .then(() => {
+        setCashFlows(prev => [...prev, ...newFlows]);
+        setPlanAmount('');
+        setPlanShares('');
+        setPlanDate('');
+        setPlanDesc('');
+        setIsRecurring(false);
+      })
+      .catch(err => {
+        console.error("Failed to save cash flows", err);
+        alert("Failed to save cash flow. Please try again.");
+      });
+  };
+
+  const handleDeleteCashFlow = (id: string) => {
+    fetch(`/api/cash-flows/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (res.ok) {
+          setCashFlows(current => current.filter(item => item.id !== id));
+        } else {
+          console.error("Failed to delete flow");
+        }
+      })
+      .catch(err => console.error("Error deleting flow", err));
+  };
   const openRuleModal = (accId: string, hIdx: number, hName: string, rule?: RedemptionRule) => { setEditingRuleContext({ accId, hIdx, hName, rule }); setRuleModalOpen(true); };
   const handleSaveRule = (rule: RedemptionRule) => { if (editingRuleContext) { updateHoldingRule(editingRuleContext.accId, editingRuleContext.hIdx, rule); } };
   const currentAvailable = liquidityData[LiquidityTier.CASH]; const currentLocked = liquidityData['Total'] - currentAvailable; const totalProjectedExpense = useMemo(() => projectionData.reduce((sum, p) => sum + (p.rawExpense || 0), 0), [projectionData]);

@@ -727,6 +727,111 @@ def delete_holding(holding_id: str):
         cursor.close()
         conn.close()
 
+
+# --- Cash Flow Models & Endpoints ---
+
+class RecurringRuleItem(BaseModel):
+    id: str
+    frequency: str
+    count: int
+
+class CashFlowItem(BaseModel):
+    id: str
+    date: str
+    amount: float
+    description: str
+    type: str # INFLOW / OUTFLOW
+    recurringRuleId: Optional[str] = None
+    relatedHoldingKey: Optional[str] = None
+
+class BatchCashFlowRequest(BaseModel):
+    flows: List[CashFlowItem]
+    rule: Optional[RecurringRuleItem] = None
+
+@app.get("/api/cash-flows", response_model=List[CashFlowItem])
+def get_cash_flows():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM cash_flows")
+        rows = cursor.fetchall()
+        results = []
+        for row in rows:
+            results.append({
+                "id": row['id'],
+                "date": str(row['date']),
+                "amount": float(row['amount']),
+                "description": row['description'],
+                "type": row['type'],
+                "recurringRuleId": row['recurring_rule_id'],
+                "relatedHoldingKey": row['related_holding_key']
+            })
+        return results
+    except mysql.connector.Error as err:
+        print(f"Error fetching cash flows: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/api/cash-flows/batch")
+def add_cash_flows_batch(payload: BatchCashFlowRequest):
+    conn = get_db_connection()
+    # Transactional
+    conn.start_transaction()
+    cursor = conn.cursor()
+    try:
+        # 1. Insert Rule if exists
+        if payload.rule:
+            rule_query = "INSERT INTO recurring_rules (id, frequency, count) VALUES (%s, %s, %s)"
+            cursor.execute(rule_query, (payload.rule.id, payload.rule.frequency, payload.rule.count))
+
+        # 2. Insert Flows
+        if payload.flows:
+            flow_query = """
+            INSERT INTO cash_flows (id, date, amount, description, type, recurring_rule_id, related_holding_key)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            flow_values = []
+            for flow in payload.flows:
+                flow_values.append((
+                    flow.id,
+                    flow.date,
+                    flow.amount,
+                    flow.description,
+                    flow.type,
+                    flow.recurringRuleId,
+                    flow.relatedHoldingKey
+                ))
+            cursor.executemany(flow_query, flow_values)
+        
+        conn.commit()
+        return {"message": "Batch save successful", "count": len(payload.flows)}
+    except mysql.connector.Error as err:
+        conn.rollback()
+        print(f"Error in batch save: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.delete("/api/cash-flows/{flow_id}")
+def delete_cash_flow(flow_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM cash_flows WHERE id = %s", (flow_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Cash flow not found")
+        conn.commit()
+        return {"message": "Deleted successfully"}
+    except mysql.connector.Error as err:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
 # --- Static File Serving ---
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
