@@ -15,7 +15,7 @@
 | `type` | VARCHAR(20) | 基金类型 | 股票型, 债券型等 |
 | `nav` | DECIMAL(10, 4) | 最新净值 | |
 | `created_at` | TIMESTAMP | 创建时间 | |
-| **流动性规则 (v20260108)** | | | |
+| **流动性规则 (v20260108.v1)** | | | |
 | `liquidity_rule_type` | ENUM | 规则类型 | DAILY, MONTHLY, FIXED_TERM, CUSTOM |
 | `settlement_days` | INT | 到账天数 | T+N (默认1) |
 | `open_day` | INT | 开放日 | 仅 MONTHLY 类型有效 (1-31) |

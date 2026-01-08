@@ -4,6 +4,10 @@
 
 ## 1. 基金管理 (Funds)
 
+> **Version History**:
+> - v20260108.v1: 新增 `PUT /api/funds/{id}` 配置流动性
+> - v20260108.v2: `PUT /api/holdings/{id}` 支持清除规则
+
 ### 1.1 获取基金列表
 *   **Method**: `GET`
 *   **URL**: `/api/funds`
@@ -96,13 +100,14 @@
     {
       "externalProductId": "product_uuid", // 可选：关联产品库，设为 null 也可以解除关联
       "purchaseDate": "2024-01-01",        // 可选：用于计算锁定期
-      "redemptionConfig": null             // 可选：设置为 null 可清除个性化规则（恢复默认）
+      "redemptionConfig": null             // [v20260108.v2] 可选：设置为 null 可清除个性化规则（恢复默认）
     }
     ```
 
 ### 2.4 获取持仓有效流动性信息 (核心逻辑)
 *   **Method**: `GET`
 *   **URL**: `/api/holdings/{holding_id}/liquidity-info`
+*   **Version**: `v20260108.v1`
 *   **描述**: 计算并返回该持仓当前生效的流动性规则。
 *   **调用逻辑 (优先级解析)**:
     1.  **外部产品 (External Product)**: 如果持仓关联了外部产品 (`external_product_id`)，系统优先使用该产品的规则。
