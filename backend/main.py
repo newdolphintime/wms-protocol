@@ -13,6 +13,39 @@ load_dotenv(dotenv_path="../.env.local")
 
 app = FastAPI()
 
+@app.on_event("startup")
+def startup_db_migration():
+    """Check and apply database schema migrations on startup"""
+    try:
+        print("Checking database schema...")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        def add_col(table, col_def, col_name):
+            cursor.execute(f"SHOW COLUMNS FROM {table} LIKE '{col_name}'")
+            if not cursor.fetchone():
+                print(f"Migrating: Adding {col_name} to {table}...")
+                try:
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
+                except Exception as e:
+                    print(f"Error adding {col_name}: {e}")
+
+        # Funds Table Liquidity Columns
+        add_col("funds", "liquidity_rule_type ENUM('DAILY', 'MONTHLY', 'FIXED_TERM', 'CUSTOM') DEFAULT 'DAILY' COMMENT 'Liquidity Rule Type'", "liquidity_rule_type")
+        add_col("funds", "settlement_days INT DEFAULT 1 COMMENT 'Settlement Days (T+N)'", "settlement_days")
+        add_col("funds", "open_day INT NULL COMMENT 'Open Day (1-31) for MONTHLY type'", "open_day")
+        add_col("funds", "has_lockup BOOLEAN DEFAULT FALSE COMMENT 'Whether lockup period exists'", "has_lockup")
+        add_col("funds", "lockup_days INT NULL COMMENT 'Lockup days from purchase'", "lockup_days")
+        add_col("funds", "maturity_date DATE NULL COMMENT 'Maturity Date for FIXED_TERM'", "maturity_date")
+        add_col("funds", "liquidity_notes TEXT NULL COMMENT 'Additional notes for liquidity'", "liquidity_notes")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Database migration check completed.")
+    except Exception as e:
+        print(f"Startup migration failed: {e}")
+
 # CORS Configuration
 # Adjust origins in production. For now, allow localhost:3000-3005
 origins = [
@@ -55,8 +88,78 @@ class Fund(BaseModel):
     riskLevel: int
     inceptionDate: date
     description: Optional[str] = None
+    
+    # Liquidity Rule Fields
+    liquidityRuleType: Optional[str] = 'DAILY'
+    settlementDays: Optional[int] = 1
+    openDay: Optional[int] = None
+    hasLockup: Optional[bool] = False
+    lockupDays: Optional[int] = None
+    maturityDate: Optional[date] = None
+    liquidityNotes: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class LiquidityInfo(BaseModel):
+    """Effective liquidity rule for a holding"""
+    ruleType: str
+    settlementDays: int
+    openDay: Optional[int] = None
+    hasLockup: bool = False
+    lockupDays: Optional[int] = None
+    maturityDate: Optional[date] = None
+    notes: Optional[str] = None
+    purchaseDate: Optional[date] = None
+    source: str # 'external_product', 'fund', 'holding_config', 'default'
+
+class ExternalProduct(BaseModel):
+    id: str
+    productCode: Optional[str] = None
+    productName: str
+    productType: str
+    issuer: Optional[str] = None
+    latestNav: Optional[float] = None
+    navDate: Optional[date] = None
+    status: str = '运行中'
+    isActive: bool = True
+    
+    # Liquidity Rules
+    liquidityRuleType: str = 'MONTHLY'
+    settlementDays: int = 10
+    openDay: Optional[int] = None
+    hasLockup: bool = False
+    lockupDays: Optional[int] = None
+    maturityDate: Optional[date] = None
+    liquidityNotes: Optional[str] = None
+    advancedConfig: Optional[Dict[str, Any]] = None
+    
+    description: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ExternalProductCreate(BaseModel):
+    productCode: Optional[str] = None
+    productName: str
+    productType: str
+    issuer: Optional[str] = None
+    latestNav: Optional[float] = None
+    navDate: Optional[date] = None
+    status: str = '运行中'
+    
+    liquidityRuleType: str = 'MONTHLY'
+    settlementDays: int = 10
+    openDay: Optional[int] = None
+    hasLockup: bool = False
+    lockupDays: Optional[int] = None
+    maturityDate: Optional[date] = None
+    liquidityNotes: Optional[str] = None
+    description: Optional[str] = None
+
+class HoldingUpdate(BaseModel):
+    """Model for updating a holding's configuration"""
+    externalProductId: Optional[str] = None
+    purchaseDate: Optional[date] = None
+    redemptionConfig: Optional[Dict[str, Any]] = None
 
 class RedemptionRule(BaseModel):
     ruleType: str
@@ -138,13 +241,86 @@ def get_funds(
                 "ytdReturn": float(row['ytd_return']),
                 "riskLevel": row['risk_level'],
                 "inceptionDate": row['inception_date'],
-                "description": row['description']
+                "description": row['description'],
+                "liquidityRuleType": row.get('liquidity_rule_type'),
+                "settlementDays": row.get('settlement_days'),
+                "openDay": row.get('open_day'),
+                "hasLockup": bool(row.get('has_lockup')),
+                "lockupDays": row.get('lockup_days'),
+                "maturityDate": row.get('maturity_date'),
+                "liquidityNotes": row.get('liquidity_notes')
             })
             
         return results
     except mysql.connector.Error as err:
         print(f"Error executing query: {err}")
         raise HTTPException(status_code=500, detail="Database query failed")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+class FundUpdate(BaseModel):
+    liquidityRuleType: Optional[str] = None
+    settlementDays: Optional[int] = None
+    openDay: Optional[int] = None
+    hasLockup: Optional[bool] = None
+    lockupDays: Optional[int] = None
+    maturityDate: Optional[date] = None
+    liquidityNotes: Optional[str] = None
+
+@app.put("/api/funds/{fund_id}")
+def update_fund(fund_id: str, update: FundUpdate):
+    """Update fund details (currently supports liquidity rules)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        fields = []
+        values = []
+        
+        if update.liquidityRuleType is not None:
+            fields.append("liquidity_rule_type = %s")
+            values.append(update.liquidityRuleType)
+        if update.settlementDays is not None:
+            fields.append("settlement_days = %s")
+            values.append(update.settlementDays)
+        if update.openDay is not None:
+            fields.append("open_day = %s")
+            values.append(update.openDay)
+        if update.hasLockup is not None:
+            fields.append("has_lockup = %s")
+            values.append(update.hasLockup)
+        if update.lockupDays is not None:
+            fields.append("lockup_days = %s")
+            values.append(update.lockupDays)
+        if update.maturityDate is not None:
+            fields.append("maturity_date = %s")
+            values.append(update.maturityDate)
+        if update.liquidityNotes is not None:
+            fields.append("liquidity_notes = %s")
+            values.append(update.liquidityNotes)
+            
+        if not fields:
+            return {"message": "No changes provided"}
+            
+        values.append(fund_id)
+        query = f"UPDATE funds SET {', '.join(fields)} WHERE id = %s"
+        
+        cursor.execute(query, tuple(values))
+        
+        if cursor.rowcount == 0:
+            # Check if fund exists
+            cursor.execute("SELECT id FROM funds WHERE id = %s", (fund_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Fund not found")
+            return {"message": "No changes made"}
+            
+        conn.commit()
+        return {"message": "Fund updated successfully"}
+    except mysql.connector.Error as err:
+        print(f"Error updating fund: {err}")
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
     finally:
         cursor.close()
         conn.close()
@@ -172,7 +348,14 @@ def get_fund_detail(fund_id: str):
             "ytdReturn": float(row['ytd_return']),
             "riskLevel": row['risk_level'],
             "inceptionDate": row['inception_date'],
-            "description": row['description']
+            "description": row['description'],
+            "liquidityRuleType": row.get('liquidity_rule_type'),
+            "settlementDays": row.get('settlement_days'),
+            "openDay": row.get('open_day'),
+            "hasLockup": bool(row.get('has_lockup')),
+            "lockupDays": row.get('lockup_days'),
+            "maturityDate": row.get('maturity_date'),
+            "liquidityNotes": row.get('liquidity_notes')
         }
     except mysql.connector.Error as err:
         print(f"Error executing query: {err}")
@@ -858,6 +1041,230 @@ if os.path.exists(dist_dir):
         
         # Default to index.html for client-side routing
         return FileResponse(os.path.join(dist_dir, "index.html"))
+
+
+
+# ----------------------------------------------------------------------------
+# External Products Endpoints
+# ----------------------------------------------------------------------------
+
+@app.get("/api/external-products", response_model=List[ExternalProduct])
+def get_external_products():
+    """Get all external products"""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM external_products WHERE is_active = TRUE ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        
+        results = []
+        for row in rows:
+            results.append({
+                "id": row['id'],
+                "productCode": row['product_code'],
+                "productName": row['product_name'],
+                "productType": row['product_type'],
+                "issuer": row['issuer'],
+                "latestNav": float(row['latest_nav']) if row['latest_nav'] else None,
+                "navDate": row['nav_date'],
+                "status": row['status'],
+                "isActive": bool(row['is_active']),
+                "liquidityRuleType": row['liquidity_rule_type'],
+                "settlementDays": row['settlement_days'],
+                "openDay": row['open_day'],
+                "hasLockup": bool(row['has_lockup']),
+                "lockupDays": row['lockup_days'],
+                "maturityDate": row['maturity_date'],
+                "liquidityNotes": row['liquidity_notes'],
+                "advancedConfig": json.loads(row['advanced_config']) if row['advanced_config'] else None,
+                "description": row['description']
+            })
+        return results
+    except mysql.connector.Error as err:
+        print(f"Error fetching external products: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/api/external-products", response_model=Dict[str, str])
+def create_external_product(product: ExternalProductCreate):
+    """Create a new external product"""
+    import uuid
+    product_id = str(uuid.uuid4())
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        query = """
+            INSERT INTO external_products (
+                id, product_code, product_name, product_type, issuer,
+                latest_nav, nav_date, status,
+                liquidity_rule_type, settlement_days, open_day,
+                has_lockup, lockup_days, maturity_date, liquidity_notes,
+                description
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (
+            product_id, product.productCode, product.productName, product.productType, product.issuer,
+            product.latestNav, product.navDate, product.status,
+            product.liquidityRuleType, product.settlementDays, product.openDay,
+            product.hasLockup, product.lockupDays, product.maturityDate, product.liquidityNotes,
+            product.description
+        ))
+        conn.commit()
+        return {"id": product_id, "message": "Product created successfully"}
+    except mysql.connector.Error as err:
+        print(f"Error creating external product: {err}")
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+# ----------------------------------------------------------------------------
+# Holdings Liquidity Management
+# ----------------------------------------------------------------------------
+
+@app.get("/api/holdings/{holding_id}/liquidity-info", response_model=LiquidityInfo)
+def get_holding_liquidity_info(holding_id: str):
+    """
+    Get effective liquidity info for a holding.
+    Resolution Priority:
+    1. External Product Rule (if linked)
+    2. Fund Rule (if linked)
+    3. Holding Config (if set)
+    4. Default
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Get Holding
+        cursor.execute("""
+            SELECT h.*, 
+                   ep.liquidity_rule_type as ep_rule, ep.settlement_days as ep_settlement, 
+                   ep.open_day as ep_open, ep.has_lockup as ep_lockup, ep.lockup_days as ep_lock_days, 
+                   ep.maturity_date as ep_maturity, ep.liquidity_notes as ep_notes,
+                   f.liquidity_rule_type as f_rule, f.settlement_days as f_settlement,
+                   f.open_day as f_open, f.has_lockup as f_lockup, f.lockup_days as f_lock_days,
+                   f.maturity_date as f_maturity, f.liquidity_notes as f_notes
+            FROM holdings h
+            LEFT JOIN external_products ep ON h.external_product_id = ep.id
+            LEFT JOIN funds f ON h.fund_id = f.id
+            WHERE h.id = %s
+        """, (holding_id,))
+        
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Holding not found")
+        
+        # Determine Rule
+        rule = {
+            "ruleType": "DAILY",
+            "settlementDays": 1,
+            "openDay": None,
+            "hasLockup": False,
+            "lockupDays": None,
+            "maturityDate": None,
+            "notes": None,
+            "source": "default",
+            "purchaseDate": row['purchase_date']
+        }
+
+        # 1. External Product
+        if row['external_product_id']:
+            rule.update({
+                "ruleType": row['ep_rule'],
+                "settlementDays": row['ep_settlement'],
+                "openDay": row['ep_open'],
+                "hasLockup": bool(row['ep_lockup']),
+                "lockupDays": row['ep_lock_days'],
+                "maturityDate": row['ep_maturity'],
+                "notes": row['ep_notes'],
+                "source": "external_product"
+            })
+        # 2. Fund
+        elif row['fund_id']:
+            # Use defaults if fund fields are null (migration should have set them though)
+            rule.update({
+                "ruleType": row['f_rule'] or 'DAILY',
+                "settlementDays": row['f_settlement'] or 1,
+                "openDay": row['f_open'],
+                "hasLockup": bool(row['f_lockup']),
+                "lockupDays": row['f_lock_days'],
+                "maturityDate": row['f_maturity'],
+                "notes": row['f_notes'],
+                "source": "fund"
+            })
+        # 3. Holding Configuration (Override)
+        elif row['redemption_config']:
+            try:
+                config = json.loads(row['redemption_config'])
+                # Only update fields present in config
+                if 'ruleType' in config: rule['ruleType'] = config['ruleType']
+                if 'settlementDays' in config: rule['settlementDays'] = config['settlementDays']
+                if 'openDay' in config: rule['openDay'] = config['openDay']
+                if 'maturityDate' in config: rule['maturityDate'] = config['maturityDate']
+                rule['source'] = "holding_config"
+            except:
+                pass # Ignore malformed JSON
+
+        return rule
+
+    except mysql.connector.Error as err:
+        print(f"Error fetching liquidity info: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.put("/api/holdings/{holding_id}", response_model=Dict[str, str])
+def update_holding(holding_id: str, update: HoldingUpdate):
+    """
+    Update holding configuration (link to product or set custom config)
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Build Update Query
+        fields = []
+        values = []
+        
+        if update.externalProductId is not None:
+            fields.append("external_product_id = %s")
+            # Handle empty string as NULL to unlink
+            values.append(update.externalProductId if update.externalProductId else None)
+            
+        if update.purchaseDate is not None:
+            fields.append("purchase_date = %s")
+            values.append(update.purchaseDate)
+            
+        if update.redemptionConfig is not None:
+            fields.append("redemption_config = %s")
+            values.append(json.dumps(update.redemptionConfig))
+            
+        if not fields:
+             return {"message": "No changes provided"}
+             
+        values.append(holding_id)
+        query = f"UPDATE holdings SET {', '.join(fields)} WHERE id = %s"
+        
+        cursor.execute(query, tuple(values))
+        
+        if cursor.rowcount == 0:
+             raise HTTPException(status_code=404, detail="Holding not found")
+             
+        conn.commit()
+        return {"message": "Holding updated successfully"}
+        
+    except mysql.connector.Error as err:
+        print(f"Error updating holding: {err}")
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+
 
 if __name__ == "__main__":
     import uvicorn

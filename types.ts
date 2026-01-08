@@ -21,6 +21,15 @@ export interface Fund {
   riskLevel: number; // 1-5
   inceptionDate: string;
   description: string;
+
+  // Liquidity Rules
+  liquidityRuleType?: 'DAILY' | 'MONTHLY' | 'FIXED_TERM' | 'CUSTOM';
+  settlementDays?: number;
+  openDay?: number;
+  hasLockup?: boolean;
+  lockupDays?: number;
+  maturityDate?: string;
+  liquidityNotes?: string;
 }
 
 export interface ChartDataPoint {
@@ -50,18 +59,76 @@ export enum AccountType {
 }
 
 export interface RedemptionRule {
-  ruleType: 'DAILY' | 'MONTHLY' | 'FIXED_TERM';
+  ruleType: 'DAILY' | 'MONTHLY' | 'FIXED_TERM' | 'CUSTOM';
   openDay?: number; // 1-31 for MONTHLY
   settlementDays: number; // T+N
   lockupEndDate?: string; // YYYY-MM-DD. If present, asset is locked until this date.
   maturityDate?: string; // YYYY-MM-DD. For FIXED_TERM, auto-redemption date.
 }
 
+export interface ExternalProduct {
+  id: string;
+  productCode?: string;
+  productName: string;
+  productType: string;
+  issuer?: string;
+  latestNav?: number;
+  navDate?: string;
+  status: string;
+  isActive: boolean;
+
+  // Liquidity Rules
+  liquidityRuleType: 'DAILY' | 'MONTHLY' | 'FIXED_TERM' | 'CUSTOM';
+  settlementDays: number;
+  openDay?: number;
+  hasLockup: boolean;
+  lockupDays?: number;
+  liquidityNotes?: string;
+  advancedConfig?: any;
+  description?: string;
+}
+
+export interface ExternalProductCreate {
+  productCode?: string;
+  productName: string;
+  productType: string;
+  issuer?: string;
+  latestNav?: number;
+  navDate?: string;
+  status?: string;
+
+  liquidityRuleType: 'DAILY' | 'MONTHLY' | 'FIXED_TERM' | 'CUSTOM';
+  settlementDays: number;
+  openDay?: number;
+  hasLockup: boolean;
+  lockupDays?: number;
+  maturityDate?: string;
+  liquidityNotes?: string;
+  description?: string;
+}
+
+export interface LiquidityInfo {
+  holdingId: string;
+  ruleType: string;
+  settlementDays: number;
+  openDay?: number;
+  hasLockup: boolean;
+  lockupDays?: number;
+  maturityDate?: string;
+  notes?: string;
+  purchaseDate?: string;
+  source: 'external_product' | 'fund' | 'holding_config' | 'default';
+}
+
 export interface Holding {
+  id: string;
   // If internal fund
   fundId?: string;
-  
-  // If external asset
+
+  // If external product (New)
+  externalProductId?: string;
+
+  // If external asset (Legacy/Direct)
   isExternal?: boolean;
   externalName?: string;
   externalType?: FundType;
@@ -70,8 +137,9 @@ export interface Holding {
 
   shares: number;   // Number of shares/units held
   avgCost: number;  // Average cost per share
+  purchaseDate?: string; // Purchase date for lockup
 
-  // Liquidity Config
+  // Liquidity Config (Override)
   redemptionRule?: RedemptionRule;
 }
 
@@ -132,24 +200,24 @@ export interface DocumentSection {
 }
 
 export interface ProposalAsset {
-    fundId: string;
-    amount: number; // In Wan (10k) usually or Yuan
+  fundId: string;
+  amount: number; // In Wan (10k) usually or Yuan
 }
 
 export interface ProposalConfig {
-    clientName: string;
-    managerName: string;
-    date: string;
-    riskLevel: string; // e.g., "积极型"
-    investmentHorizon: string; // e.g., "1-3年"
-    totalAmount: number; // Displayed amount
-    assets: ProposalAsset[];
-    aiAnalysis?: string; // Optional legacy field
-    sections: DocumentSection[]; // New field for page management
+  clientName: string;
+  managerName: string;
+  date: string;
+  riskLevel: string; // e.g., "积极型"
+  investmentHorizon: string; // e.g., "1-3年"
+  totalAmount: number; // Displayed amount
+  assets: ProposalAsset[];
+  aiAnalysis?: string; // Optional legacy field
+  sections: DocumentSection[]; // New field for page management
 }
 
 export interface PortfolioHistoryPoint {
-    date: string;
-    value: number; // Normalized to 100 or actual NAV simulation
-    benchmark: number;
+  date: string;
+  value: number; // Normalized to 100 or actual NAV simulation
+  benchmark: number;
 }

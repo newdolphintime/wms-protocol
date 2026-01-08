@@ -360,7 +360,7 @@ const AddAssetModal: React.FC<{ isOpen: boolean; onClose: () => void; accounts: 
     if (accountId && name && shares && nav) {
       let redemptionRule: RedemptionRule | undefined = undefined;
       if (isPeriodic) { redemptionRule = { ruleType: 'MONTHLY', openDay: openDay, settlementDays: settlementDays }; }
-      onAdd(accountId, { isExternal: true, externalName: name, externalType: type, externalNav: Number(nav), externalNavDate: navDate, shares: Number(shares), avgCost: Number(avgCost) || Number(nav), redemptionRule });
+      onAdd(accountId, { id: 'temp', isExternal: true, externalName: name, externalType: type, externalNav: Number(nav), externalNavDate: navDate, shares: Number(shares), avgCost: Number(avgCost) || Number(nav), redemptionRule });
       onClose(); setName(''); setShares(''); setNav(''); setAvgCost(''); setIsPeriodic(false);
     }
   };
@@ -383,7 +383,7 @@ const AddAssetModal: React.FC<{ isOpen: boolean; onClose: () => void; accounts: 
 };
 const LiquidityRuleModal: React.FC<{ isOpen: boolean; onClose: () => void; holdingName: string; currentRule?: RedemptionRule; onSave: (rule: RedemptionRule) => void; }> = (props) => {
   const { isOpen, onClose, holdingName, currentRule, onSave } = props;
-  const [ruleType, setRuleType] = useState<'DAILY' | 'MONTHLY' | 'FIXED_TERM'>('DAILY');
+  const [ruleType, setRuleType] = useState<'DAILY' | 'MONTHLY' | 'FIXED_TERM' | 'CUSTOM'>('DAILY');
   const [openDay, setOpenDay] = useState<number>(15);
   const [settlementDays, setSettlementDays] = useState<number>(3);
   const [hasLockup, setHasLockup] = useState(false);
@@ -527,7 +527,7 @@ const ComparisonPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
     </div>
   );
 };
-const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: PatchRule) => void, onRemovePatchRule: (id: string) => void }> = ({ patchRules, onAddPatchRule, onRemovePatchRule }) => {
+const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: PatchRule) => void, onRemovePatchRule: (id: string) => void, onEditLiquidity: (name: string, rule: RedemptionRule, fundId?: string) => void, refreshTrigger?: number }> = ({ patchRules, onAddPatchRule, onRemovePatchRule, onEditLiquidity, refreshTrigger }) => {
   const { id } = useParams<{ id: string }>();
   // const fund = MOCK_FUNDS.find(f => f.id === id); // Replaced by API
   const [fund, setFund] = useState<Fund | null>(null);
@@ -557,7 +557,7 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
       }
     };
     if (id) fetchFund();
-  }, [id]);
+  }, [id, refreshTrigger]);
 
   // 2. Fetch History based on Range
   useEffect(() => {
@@ -612,7 +612,53 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between"> <div className="flex items-center gap-4"> <Link to="/" className="p-2 hover:bg-gray-100 rounded-full text-gray-500"><ArrowLeft className="w-5 h-5" /></Link> <div> <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"> {fund.name} <span className="text-base font-normal text-gray-500 font-mono">({fund.code})</span> </h1> <div className="flex items-center gap-3 mt-1 text-sm text-gray-500"> <Badge color={getFundTypeColor(fund.type)}>{fund.type}</Badge> <span>基金经理: {fund.manager}</span> <span>成立日期: {fund.inceptionDate}</span> </div> </div> </div> <button onClick={() => setIsPatchModalOpen(true)} className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 shadow-sm text-sm font-medium"> <Wand2 className="w-4 h-4 mr-2 text-indigo-600" /> 配置净值补齐 </button> </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link to="/" className="p-2 hover:bg-gray-100 rounded-full text-gray-500"><ArrowLeft className="w-5 h-5" /></Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              {fund.name}
+              <span className="text-base font-normal text-gray-500 font-mono">({fund.code})</span>
+
+              {/* Liquidity Tag */}
+              {fund.liquidityRuleType && (
+                <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium border ${fund.liquidityRuleType === 'DAILY' ? 'bg-green-50 text-green-700 border-green-200' :
+                  fund.liquidityRuleType === 'MONTHLY' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                    'bg-purple-50 text-purple-700 border-purple-200'
+                  }`}>
+                  {fund.liquidityRuleType === 'MONTHLY' ? `每月${fund.openDay}日开放` :
+                    fund.liquidityRuleType === 'FIXED_TERM' ? `到期日 ${fund.maturityDate}` :
+                      '每日开放'}
+                  <span className="ml-1 text-xs opacity-70">T+{fund.settlementDays}</span>
+                </span>
+              )}
+            </h1>
+            <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+              <Badge color={getFundTypeColor(fund.type)}>{fund.type}</Badge>
+              <span>基金经理: {fund.manager}</span>
+              <span>成立日期: {fund.inceptionDate}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => {
+            if (fund) {
+              onEditLiquidity(fund.name, {
+                ruleType: fund.liquidityRuleType as any || 'DAILY',
+                settlementDays: fund.settlementDays || 1,
+                openDay: fund.openDay,
+                lockupEndDate: undefined,
+                maturityDate: fund.maturityDate
+              }, fund.id);
+            }
+          }} className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 shadow-sm text-sm font-medium">
+            <Settings className="w-4 h-4 mr-2 text-indigo-600" /> 配置流动性
+          </button>
+          <button onClick={() => setIsPatchModalOpen(true)} className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 shadow-sm text-sm font-medium">
+            <Wand2 className="w-4 h-4 mr-2 text-indigo-600" /> 配置净值补齐
+          </button>
+        </div>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6"> <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-200 shadow-sm"> <div className="flex justify-between items-center mb-6"> <h3 className="font-bold text-gray-800">单位净值走势</h3> <div className="flex bg-gray-100 rounded-lg p-1"> {TIME_RANGES.filter(r => r.value !== 'SINCE_INCEPTION').map(r => (<button key={r.label} onClick={() => setRange(r.value)} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${range === r.value ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>{r.label}</button>))} </div> </div> <div className="h-[300px]"> <ResponsiveContainer width="100%" height="100%"> <LineChart data={historyData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}> <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" /> <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} minTickGap={30} /> <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} /> <RechartsTooltip /> <Legend /> <Line type="monotone" dataKey="nav_actual" name="真实净值" stroke="#4f46e5" strokeWidth={2} dot={false} connectNulls={false} /> <Line type="monotone" dataKey="nav_patched" name="补齐净值" stroke="#f59e0b" strokeWidth={2} strokeDasharray="4 4" dot={false} connectNulls={false} /> </LineChart> </ResponsiveContainer> </div> </div> <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm"> <h3 className="font-bold text-gray-800 mb-6">日涨跌幅</h3> <div className="h-[300px]"> <ResponsiveContainer width="100%" height="100%"> <BarChart data={historyData}> <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" /> <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} minTickGap={30} /> <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} /> <RechartsTooltip formatter={(val: number) => [`${val}%`, '涨跌幅']} /> <Bar dataKey="change"> {historyData.map((entry, index) => (<Cell key={`cell-${index}`} fill={(entry.change || 0) >= 0 ? '#ef4444' : '#22c55e'} />))} </Bar> </BarChart> </ResponsiveContainer> </div> </div> </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50"> <h3 className="font-bold text-gray-900">历史净值明细</h3> <div className="flex items-center gap-2"> <input type="checkbox" id="filterPatched" checked={filterPatched} onChange={(e) => setFilterPatched(e.target.checked)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /> <label htmlFor="filterPatched" className="text-sm text-gray-600 cursor-pointer">仅显示补齐数据</label> </div> </div>
         <table className="min-w-full divide-y divide-gray-200">
@@ -694,7 +740,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
   const [targetDate, setTargetDate] = useState<string>(''); const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL'); const [monthlyExpenses, setMonthlyExpenses] = useState<number>(50000);
   const [planCategory, setPlanCategory] = useState<'GENERIC' | 'REDEMPTION' | 'DIVIDEND' | 'INSURANCE'>('GENERIC'); const [planAmount, setPlanAmount] = useState(''); const [planShares, setPlanShares] = useState(''); const [planDate, setPlanDate] = useState(''); const [planDesc, setPlanDesc] = useState(''); const [planType, setPlanType] = useState<'INFLOW' | 'OUTFLOW'>('OUTFLOW'); const [selectedProductId, setSelectedProductId] = useState(''); const [insuranceName, setInsuranceName] = useState(''); const [validationError, setValidationError] = useState<string | null>(null);
   const [isRecurring, setIsRecurring] = useState(false); const [recurFrequency, setRecurFrequency] = useState<Frequency>(Frequency.MONTHLY); const [recurCount, setRecurCount] = useState<number>(12);
-  const [ruleModalOpen, setRuleModalOpen] = useState(false); const [editingRuleContext, setEditingRuleContext] = useState<{ accId: string, hIdx: number, hName: string, rule?: RedemptionRule } | null>(null);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false); const [editingRuleContext, setEditingRuleContext] = useState<{ accId: string, hIdx: number, hName: string, rule?: RedemptionRule, fundId?: string } | null>(null);
   const [editingCashAccId, setEditingCashAccId] = useState<string | null>(null); const [tempCashVal, setTempCashVal] = useState('');
 
   const currentAccountHoldings = useMemo(() => { const accs = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter(a => a.id === selectedAccountId); return accs.flatMap(a => a.holdings.map((h, index) => { const name = h.isExternal ? h.externalName : MOCK_FUNDS.find(f => f.id === h.fundId)?.name; return { ...h, displayName: name, accountId: a.id, originalIndex: index, uniqueKey: `${a.id}_${index}` }; })); }, [portfolio, selectedAccountId]);
@@ -902,6 +948,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
   };
   const openRuleModal = (accId: string, hIdx: number, hName: string, rule?: RedemptionRule) => { setEditingRuleContext({ accId, hIdx, hName, rule }); setRuleModalOpen(true); };
   const handleSaveRule = (rule: RedemptionRule) => { if (editingRuleContext) { updateHoldingRule(editingRuleContext.accId, editingRuleContext.hIdx, rule); } };
+  // handleSaveRule moved to after handleUpdateHoldingRule definition because of scoping issues
   const currentAvailable = liquidityData[LiquidityTier.CASH]; const currentLocked = liquidityData['Total'] - currentAvailable; const totalProjectedExpense = useMemo(() => projectionData.reduce((sum, p) => sum + (p.rawExpense || 0), 0), [projectionData]);
 
   // -- NEW STATE FOR SELECTED DATE DETAIL --
@@ -1058,6 +1105,9 @@ const App: React.FC = () => {
   // Given user request "Replace mock with real", I will fetch on mount.
   const [portfolio, setPortfolio] = useState<ClientPortfolio | null>(null);
   const [loadingPortfolio, setLoadingPortfolio] = useState(true);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false);
+  const [editingRuleContext, setEditingRuleContext] = useState<{ accId: string, hIdx: number, hName: string, rule?: RedemptionRule, fundId?: string } | null>(null);
+  const [fundRefreshTrigger, setFundRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const fetchPortfolio = async () => {
@@ -1166,15 +1216,13 @@ const App: React.FC = () => {
 
   const handleUpdateHoldingRule = (accId: string, holdingIdx: number, rule: RedemptionRule) => {
     if (!portfolio) return;
-    // NOTE: This update is LOCAL ONLY for now as backend PUT endpoint is pending.
+
+    // 1. Optimistic UI Update
     setPortfolio(prev => {
       if (!prev) return prev;
       const newAccounts = prev.accounts.map(acc => {
         if (acc.id === accId) {
           const newHoldings = [...acc.holdings];
-          // We need to match by ID now, not Index, but the UI passes Index.
-          // Let's rely on the fact that indices align if no sorting happened.
-          // Ideally UI should pass ID.
           const holding = newHoldings[holdingIdx];
           if (holding) {
             newHoldings[holdingIdx] = { ...holding, redemptionRule: rule };
@@ -1185,6 +1233,64 @@ const App: React.FC = () => {
       });
       return { ...prev, accounts: newAccounts };
     });
+
+    // 2. Persist to Backend
+    const account = portfolio.accounts.find(a => a.id === accId);
+    if (account) {
+      const holding = account.holdings[holdingIdx];
+      if (holding && holding.id) { // Ensure holding has ID
+        import('./services/externalProductsService').then(({ liquidityService }) => {
+          liquidityService.updateHolding(holding.id, { redemptionConfig: rule })
+            .then(() => console.log("Rule persisted successfully"))
+            .catch(err => {
+              console.error("Failed to persist rule", err);
+              alert("保存规则失败，请刷新重试");
+            });
+        });
+      }
+    }
+  };
+
+  const handleSaveRule = (rule: RedemptionRule) => {
+    if (editingRuleContext) {
+      if (editingRuleContext.accId === 'FUND_UPDATE' && editingRuleContext.fundId) {
+        // Fund Update Logic
+        fetch(`/api/funds/${editingRuleContext.fundId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            liquidityRuleType: rule.ruleType,
+            settlementDays: rule.settlementDays,
+            openDay: rule.openDay,
+            hasLockup: false, // For now simplified
+            lockupDays: 0,
+            maturityDate: rule.maturityDate,
+            liquidityNotes: ''
+          })
+        }).then(async (res) => {
+          if (res.ok) {
+            // alert("Fund liquidity updated!");
+            // Force refresh or just close
+            // Ideally we reload the page data
+            // alert("Fund liquidity updated!");
+            // Force refresh or just close
+            // Ideally we reload the page data
+            // window.location.reload(); 
+            setFundRefreshTrigger(prev => prev + 1);
+          } else {
+            console.error("Failed to update fund");
+            alert("更新失败");
+          }
+        }).catch(e => {
+          console.error(e);
+          alert("更新出错");
+        });
+      } else {
+        // Normal Holding Update
+        handleUpdateHoldingRule(editingRuleContext.accId, editingRuleContext.hIdx, rule);
+      }
+      setRuleModalOpen(false);
+    }
   };
 
   const handleUpdateAccountCash = (accId: string, amount: number) => {
@@ -1258,7 +1364,7 @@ const App: React.FC = () => {
             ) : (
               <Routes>
                 <Route path="/" element={<FundListPage />} />
-                <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
+                <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} refreshTrigger={fundRefreshTrigger} onEditLiquidity={(name, rule, fundId) => { setEditingRuleContext({ accId: 'FUND_UPDATE', hIdx: -1, hName: name, rule, fundId }); setRuleModalOpen(true); }} />} />
                 <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
                 <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
                 <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
@@ -1267,6 +1373,7 @@ const App: React.FC = () => {
             ))}
           </div>
         </main>
+        <LiquidityRuleModal isOpen={ruleModalOpen} onClose={() => setRuleModalOpen(false)} holdingName={editingRuleContext?.hName || ''} currentRule={editingRuleContext?.rule} onSave={handleSaveRule} />
       </div>
     </HashRouter>
   );

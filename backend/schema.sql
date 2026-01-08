@@ -11,7 +11,18 @@ CREATE TABLE IF NOT EXISTS funds (
     risk_level INT COMMENT 'Risk Rating (1-5)',
     inception_date DATE COMMENT 'Fund Inception Date',
     description TEXT COMMENT 'Fund Description and Investment Scope',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Record Creation Timestamp'
+    
+    -- Liquidity Rules (Product Attributes)
+    liquidity_rule_type ENUM('DAILY', 'MONTHLY', 'FIXED_TERM', 'CUSTOM') DEFAULT 'DAILY' COMMENT 'Liquidity Rule Type',
+    settlement_days INT DEFAULT 1 COMMENT 'Settlement Days (T+N)',
+    open_day INT NULL COMMENT 'Open Day (1-31) for MONTHLY type',
+    has_lockup BOOLEAN DEFAULT FALSE COMMENT 'Whether lockup period exists',
+    lockup_days INT NULL COMMENT 'Lockup days from purchase',
+    maturity_date DATE NULL COMMENT 'Maturity Date for FIXED_TERM',
+    liquidity_notes TEXT NULL COMMENT 'Additional notes for liquidity',
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Record Creation Timestamp',
+    INDEX idx_liquidity_type (liquidity_rule_type)
 ) COMMENT='Fund Basic Information Table' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS fund_nav_history (
@@ -54,6 +65,34 @@ CREATE TABLE IF NOT EXISTS accounts (
     FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS external_products (
+    id VARCHAR(36) PRIMARY KEY COMMENT 'Product Unique Identifier',
+    product_code VARCHAR(50) COMMENT 'Product Code',
+    product_name VARCHAR(200) NOT NULL COMMENT 'Product Name',
+    product_type VARCHAR(50) NOT NULL COMMENT 'Product Type (Trust, PE, etc.)',
+    issuer VARCHAR(200) COMMENT 'Issuer Name',
+    latest_nav DECIMAL(10, 4) COMMENT 'Latest NAV',
+    nav_date DATE COMMENT 'NAV Date',
+    status ENUM('募集中', '运行中', '已到期', '已清算', '暂停交易') DEFAULT '运行中' COMMENT 'Product Status',
+    is_active BOOLEAN DEFAULT TRUE COMMENT 'Active Status',
+    
+    -- Liquidity Rules
+    liquidity_rule_type ENUM('DAILY', 'MONTHLY', 'FIXED_TERM', 'CUSTOM') DEFAULT 'MONTHLY' COMMENT 'Liquidity Rule Type',
+    settlement_days INT DEFAULT 10 COMMENT 'Settlement Days (T+N)',
+    open_day INT NULL COMMENT 'Open Day (1-31)',
+    has_lockup BOOLEAN DEFAULT FALSE COMMENT 'Whether lockup period exists',
+    lockup_days INT NULL COMMENT 'Lockup days',
+    maturity_date DATE NULL COMMENT 'Maturity Date',
+    liquidity_notes TEXT NULL COMMENT 'Liquidity Notes',
+    advanced_config JSON NULL COMMENT 'Advanced Configuration (JSON)',
+
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_product_type (product_type),
+    INDEX idx_status (status)
+) COMMENT='External Product Library' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS holdings (
     id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
     account_id VARCHAR(36) NOT NULL,
@@ -61,7 +100,10 @@ CREATE TABLE IF NOT EXISTS holdings (
     -- Link to internal Funds table (Nullable)
     fund_id VARCHAR(36) NULL COMMENT 'If set, refers to system funds',
     
-    -- External Asset Fields (Used if fund_id is NULL)
+    -- Link to External Products (Nullable)
+    external_product_id VARCHAR(36) NULL COMMENT 'Reference to external_products table',
+
+    -- External Asset Fields (Legacy/Direct Input)
     is_external BOOLEAN DEFAULT FALSE,
     external_name VARCHAR(100),
     external_type VARCHAR(50) COMMENT 'FundType Enum',
@@ -71,15 +113,17 @@ CREATE TABLE IF NOT EXISTS holdings (
     -- Position Data
     shares DECIMAL(15, 2) NOT NULL DEFAULT 0,
     avg_cost DECIMAL(10, 4) DEFAULT 0,
+    purchase_date DATE NULL COMMENT 'Purchase Date for Lockup Calculation',
     
     -- Extensible Logic
-    redemption_config JSON COMMENT 'Stores RedemptionRule: ruleType, openDay, settlementDays, etc.',
+    redemption_config JSON COMMENT 'Stores RedemptionRule overrides',
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-    FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE SET NULL
+    FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE SET NULL,
+    FOREIGN KEY (external_product_id) REFERENCES external_products(id) ON DELETE SET NULL
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS recurring_rules (
