@@ -1229,18 +1229,23 @@ def update_holding(holding_id: str, update: HoldingUpdate):
         fields = []
         values = []
         
-        if update.externalProductId is not None:
+        # Use exclude_unset to distinguish between missing (do nothing) and null (clear)
+        update_data = update.dict(exclude_unset=True)
+        
+        if 'externalProductId' in update_data:
             fields.append("external_product_id = %s")
             # Handle empty string as NULL to unlink
-            values.append(update.externalProductId if update.externalProductId else None)
+            val = update_data['externalProductId']
+            values.append(val if val else None)
             
-        if update.purchaseDate is not None:
+        if 'purchaseDate' in update_data:
             fields.append("purchase_date = %s")
-            values.append(update.purchaseDate)
+            values.append(update_data['purchaseDate'])
             
-        if update.redemptionConfig is not None:
+        if 'redemptionConfig' in update_data:
             fields.append("redemption_config = %s")
-            values.append(json.dumps(update.redemptionConfig))
+            val = update_data['redemptionConfig']
+            values.append(json.dumps(val) if val else None)
             
         if not fields:
              return {"message": "No changes provided"}

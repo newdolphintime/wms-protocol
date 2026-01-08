@@ -381,7 +381,7 @@ const AddAssetModal: React.FC<{ isOpen: boolean; onClose: () => void; accounts: 
     </div>
   );
 };
-const LiquidityRuleModal: React.FC<{ isOpen: boolean; onClose: () => void; holdingName: string; currentRule?: RedemptionRule; onSave: (rule: RedemptionRule) => void; }> = (props) => {
+const LiquidityRuleModal: React.FC<{ isOpen: boolean; onClose: () => void; holdingName: string; currentRule?: RedemptionRule; onSave: (rule: RedemptionRule | null) => void; }> = (props) => {
   const { isOpen, onClose, holdingName, currentRule, onSave } = props;
   const [ruleType, setRuleType] = useState<'DAILY' | 'MONTHLY' | 'FIXED_TERM' | 'CUSTOM'>('DAILY');
   const [openDay, setOpenDay] = useState<number>(15);
@@ -410,6 +410,7 @@ const LiquidityRuleModal: React.FC<{ isOpen: boolean; onClose: () => void; holdi
           <div> <label className="block text-xs font-medium text-gray-700 mb-1">赎回结算周期 (T+N)</label> <div className="flex items-center gap-2"> <span className="text-sm text-gray-500">T +</span> <input type="number" min={0} value={settlementDays} onChange={e => setSettlementDays(parseInt(e.target.value))} className="w-20 text-sm border-gray-300 rounded-md" /> <span className="text-sm text-gray-500">天到账</span> </div> </div>
           {ruleType !== 'FIXED_TERM' && (<div className="border-t border-gray-100 pt-3"> <div className="flex items-center gap-2 mb-2"> <input type="checkbox" id="lockupCheck" checked={hasLockup} onChange={e => setHasLockup(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" /> <label htmlFor="lockupCheck" className="text-sm font-medium text-gray-700">配置锁定期 (如持有满N天才可赎回)</label> </div> {hasLockup && (<div className="bg-amber-50 p-2 rounded border border-amber-100"> <label className="block text-xs font-medium text-amber-800 mb-1">锁定期截止日</label> <input type="date" value={lockupEndDate} onChange={e => setLockupEndDate(e.target.value)} className="w-full text-sm border-amber-200 rounded-md focus:ring-amber-500 focus:border-amber-500" /> <p className="text-[10px] text-amber-600 mt-1">在此日期前不支持赎回，之后按{ruleType === 'MONTHLY' ? '每月开放' : '每日开放'}规则执行。</p> </div>)} </div>)}
           <button onClick={handleSave} className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 text-sm font-medium">保存配置</button>
+          <button onClick={() => { onSave(null); onClose(); }} className="w-full mt-2 bg-white text-gray-500 border border-gray-200 py-2 rounded-md hover:bg-gray-50 text-sm font-medium">恢复默认 (清除个性化)</button>
         </div>
       </div>
     </div>
@@ -721,7 +722,7 @@ const PortfolioPage: React.FC<{ portfolio: ClientPortfolio, patchRules: PatchRul
     </div>
   );
 };
-const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (accId: string, holdingIdx: number, rule: RedemptionRule) => void, updateAccountCash: (accId: string, amount: number) => void }> = ({ portfolio, updateHoldingRule, updateAccountCash }) => {
+const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updateHoldingRule: (accId: string, holdingIdx: number, rule: RedemptionRule | null) => void, updateAccountCash: (accId: string, amount: number) => void }> = ({ portfolio, funds, updateHoldingRule, updateAccountCash }) => {
   const [cashFlows, setCashFlows] = useState<CashFlow[]>([]);
   // Fetch initial cash flows
   useEffect(() => {
@@ -743,17 +744,17 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
   const [ruleModalOpen, setRuleModalOpen] = useState(false); const [editingRuleContext, setEditingRuleContext] = useState<{ accId: string, hIdx: number, hName: string, rule?: RedemptionRule, fundId?: string } | null>(null);
   const [editingCashAccId, setEditingCashAccId] = useState<string | null>(null); const [tempCashVal, setTempCashVal] = useState('');
 
-  const currentAccountHoldings = useMemo(() => { const accs = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter(a => a.id === selectedAccountId); return accs.flatMap(a => a.holdings.map((h, index) => { const name = h.isExternal ? h.externalName : MOCK_FUNDS.find(f => f.id === h.fundId)?.name; return { ...h, displayName: name, accountId: a.id, originalIndex: index, uniqueKey: `${a.id}_${index}` }; })); }, [portfolio, selectedAccountId]);
-  const selectedHoldingData = useMemo(() => { if (!selectedProductId) return null; const holding = currentAccountHoldings.find(h => h.uniqueKey === selectedProductId); if (!holding) return null; let nav = 0; let navDate = new Date().toISOString().split('T')[0]; if (holding.isExternal) { nav = holding.externalNav || 0; navDate = holding.externalNavDate || navDate; } else { const fund = MOCK_FUNDS.find(f => f.id === holding.fundId); nav = fund?.nav || 0; } return { ...holding, currentNav: nav, currentNavDate: navDate }; }, [selectedProductId, currentAccountHoldings]);
+  const currentAccountHoldings = useMemo(() => { const accs = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter(a => a.id === selectedAccountId); return accs.flatMap(a => a.holdings.map((h, index) => { const name = h.isExternal ? h.externalName : funds.find(f => f.id === h.fundId)?.name; return { ...h, displayName: name, accountId: a.id, originalIndex: index, uniqueKey: `${a.id}_${index}` }; })); }, [portfolio, selectedAccountId, funds]);
+  const selectedHoldingData = useMemo(() => { if (!selectedProductId) return null; const holding = currentAccountHoldings.find(h => h.uniqueKey === selectedProductId); if (!holding) return null; let nav = 0; let navDate = new Date().toISOString().split('T')[0]; if (holding.isExternal) { nav = holding.externalNav || 0; navDate = holding.externalNavDate || navDate; } else { const fund = funds.find(f => f.id === holding.fundId); nav = fund?.nav || 0; } return { ...holding, currentNav: nav, currentNavDate: navDate }; }, [selectedProductId, currentAccountHoldings, funds]);
   useEffect(() => { if (planCategory === 'REDEMPTION' && selectedProductId && planDate) { const holding = currentAccountHoldings.find(h => h.uniqueKey === selectedProductId); if (holding && holding.redemptionRule) { const dateObj = new Date(planDate); dateObj.setHours(0, 0, 0, 0); if (holding.redemptionRule.lockupEndDate && holding.redemptionRule.ruleType !== 'FIXED_TERM') { const lockupEnd = new Date(holding.redemptionRule.lockupEndDate); lockupEnd.setHours(0, 0, 0, 0); if (dateObj.getTime() < lockupEnd.getTime()) { setValidationError(`产品处于锁定期（至${holding.redemptionRule.lockupEndDate}），无法赎回`); return; } } if (holding.redemptionRule.ruleType === 'FIXED_TERM' && holding.redemptionRule.maturityDate) { const maturity = new Date(holding.redemptionRule.maturityDate); maturity.setHours(0, 0, 0, 0); if (dateObj.getTime() < maturity.getTime()) { setValidationError(`固定期限产品未到期（到期日${holding.redemptionRule.maturityDate}），无法提前赎回`); return; } } if (holding.redemptionRule.ruleType === 'MONTHLY') { const day = dateObj.getDate(); if (day !== holding.redemptionRule.openDay) { setValidationError(`该产品仅在每月 ${holding.redemptionRule.openDay} 日开放赎回`); return; } } } } setValidationError(null); }, [planCategory, selectedProductId, planDate, currentAccountHoldings]);
-  const liquidityData = useMemo(() => { const data = { [LiquidityTier.CASH]: 0, [LiquidityTier.HIGH]: 0, [LiquidityTier.MEDIUM]: 0, [LiquidityTier.LOW]: 0, 'T30': 0, 'Total': 0 }; const today = new Date(); const accountsToAnalyze = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter(a => a.id === selectedAccountId); accountsToAnalyze.forEach(account => { const cash = account.cashBalance || 0; data[LiquidityTier.CASH] += cash; data['T30'] += cash; data['Total'] += cash; account.holdings.forEach(h => { let val = 0; let type = FundType.STRATEGY; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; } else { const f = MOCK_FUNDS.find(fund => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; } } const availableDate = calculateAvailabilityDate(today, h, type); const diffTime = availableDate.getTime() - today.getTime(); const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); if (days <= 1) data[LiquidityTier.HIGH] += val; else if (days <= 3) data[LiquidityTier.MEDIUM] += val; else if (days <= 7) data[LiquidityTier.LOW] += val; if (days <= 30) data['T30'] += val; data['Total'] += val; }); }); return data; }, [portfolio, selectedAccountId]);
+  const liquidityData = useMemo(() => { const data = { [LiquidityTier.CASH]: 0, [LiquidityTier.HIGH]: 0, [LiquidityTier.MEDIUM]: 0, [LiquidityTier.LOW]: 0, 'T30': 0, 'Total': 0 }; const today = new Date(); const accountsToAnalyze = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter(a => a.id === selectedAccountId); accountsToAnalyze.forEach(account => { const cash = account.cashBalance || 0; data[LiquidityTier.CASH] += cash; data['T30'] += cash; data['Total'] += cash; account.holdings.forEach(h => { let val = 0; let type = FundType.STRATEGY; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; } else { const f = funds.find(fund => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; } } const availableDate = calculateAvailabilityDate(today, h, type); const diffTime = availableDate.getTime() - today.getTime(); const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); if (days <= 1) data[LiquidityTier.HIGH] += val; else if (days <= 3) data[LiquidityTier.MEDIUM] += val; else if (days <= 7) data[LiquidityTier.LOW] += val; if (days <= 30) data['T30'] += val; data['Total'] += val; }); }); return data; }, [portfolio, selectedAccountId, funds]);
   const projectionData = useMemo(() => {
     const days = 30; const data = []; const today = new Date(); today.setHours(0, 0, 0, 0);
     let currentCash = liquidityData[LiquidityTier.CASH];
     const redeemedAmounts = new Map<string, number>();
     const sortedFlows = [...cashFlows].sort((a, b) => a.date.localeCompare(b.date));
 
-    const holdingsWithArrival = currentAccountHoldings.map(h => { let val = 0; let type = FundType.STRATEGY; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; } else { const f = MOCK_FUNDS.find(fund => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; } } const arrivalDate = calculateAvailabilityDate(today, h, type); arrivalDate.setHours(0, 0, 0, 0); return { ...h, value: val, arrivalDate: arrivalDate, uniqueKey: h.uniqueKey }; });
+    const holdingsWithArrival = currentAccountHoldings.map(h => { let val = 0; let type = FundType.STRATEGY; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; } else { const f = funds.find(fund => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; } } const arrivalDate = calculateAvailabilityDate(today, h, type); arrivalDate.setHours(0, 0, 0, 0); return { ...h, value: val, arrivalDate: arrivalDate, uniqueKey: h.uniqueKey }; });
 
     for (let i = 0; i < days; i++) {
       const date = new Date(today); date.setDate(today.getDate() + i); date.setHours(0, 0, 0, 0);
@@ -816,9 +817,9 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
       });
     }
     return data;
-  }, [portfolio, cashFlows, liquidityData, selectedAccountId, currentAccountHoldings]);
+  }, [portfolio, cashFlows, liquidityData, selectedAccountId, currentAccountHoldings, funds]);
 
-  const lockedDetails = useMemo(() => { const list: { name: string; value: number; reason: string }[] = []; const today = new Date(); today.setHours(0, 0, 0, 0); const accountsToAnalyze = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter((a) => a.id === selectedAccountId); accountsToAnalyze.forEach((account) => { account.holdings.forEach((h) => { let val = 0; let type = FundType.STRATEGY; let name = ''; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; name = h.externalName || '未命名资产'; } else { const f = MOCK_FUNDS.find((fund) => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; name = f.name; } } const availableDate = calculateAvailabilityDate(today, h, type); availableDate.setHours(0, 0, 0, 0); if (today.getTime() < availableDate.getTime()) { const diffTime = availableDate.getTime() - today.getTime(); const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); let reason = `预计T+${days}可用`; if (h.redemptionRule?.ruleType === 'FIXED_TERM' && h.redemptionRule.maturityDate) { reason = `到期自动赎回 (到期日: ${h.redemptionRule.maturityDate})`; } else if (h.redemptionRule?.lockupEndDate) { const lockupEnd = new Date(h.redemptionRule.lockupEndDate); lockupEnd.setHours(0, 0, 0, 0); if (today.getTime() < lockupEnd.getTime()) { reason = `处于锁定期 (至 ${h.redemptionRule.lockupEndDate})`; } else if (h.redemptionRule?.ruleType === 'MONTHLY') { const settlementDays = h.redemptionRule.settlementDays; const openDate = new Date(availableDate); openDate.setDate(openDate.getDate() - settlementDays); if (today.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`; } else { reason = `赎回结算中 (T+${days})`; } } } else if (h.redemptionRule?.ruleType === 'MONTHLY') { const settlementDays = h.redemptionRule.settlementDays; const openDate = new Date(availableDate); openDate.setDate(openDate.getDate() - settlementDays); if (today.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`; } else { reason = `赎回结算中 (T+${days})`; } } list.push({ name, value: val, reason }); } }); }); return list.sort((a, b) => b.value - a.value); }, [portfolio, selectedAccountId]);
+  const lockedDetails = useMemo(() => { const list: { name: string; value: number; reason: string }[] = []; const today = new Date(); today.setHours(0, 0, 0, 0); const accountsToAnalyze = selectedAccountId === 'ALL' ? portfolio.accounts : portfolio.accounts.filter((a) => a.id === selectedAccountId); accountsToAnalyze.forEach((account) => { account.holdings.forEach((h) => { let val = 0; let type = FundType.STRATEGY; let name = ''; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; name = h.externalName || '未命名资产'; } else { const f = funds.find((fund) => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; name = f.name; } } const availableDate = calculateAvailabilityDate(today, h, type); availableDate.setHours(0, 0, 0, 0); if (today.getTime() < availableDate.getTime()) { const diffTime = availableDate.getTime() - today.getTime(); const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); let reason = `预计T+${days}可用`; if (h.redemptionRule?.ruleType === 'FIXED_TERM' && h.redemptionRule.maturityDate) { reason = `到期自动赎回 (到期日: ${h.redemptionRule.maturityDate})`; } else if (h.redemptionRule?.lockupEndDate) { const lockupEnd = new Date(h.redemptionRule.lockupEndDate); lockupEnd.setHours(0, 0, 0, 0); if (today.getTime() < lockupEnd.getTime()) { reason = `处于锁定期 (至 ${h.redemptionRule.lockupEndDate})`; } else if (h.redemptionRule?.ruleType === 'MONTHLY') { const settlementDays = h.redemptionRule.settlementDays; const openDate = new Date(availableDate); openDate.setDate(openDate.getDate() - settlementDays); if (today.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`; } else { reason = `赎回结算中 (T+${days})`; } } } else if (h.redemptionRule?.ruleType === 'MONTHLY') { const settlementDays = h.redemptionRule.settlementDays; const openDate = new Date(availableDate); openDate.setDate(openDate.getDate() - settlementDays); if (today.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule.openDay}日开放)`; } else { reason = `赎回结算中 (T+${days})`; } } list.push({ name, value: val, reason }); } }); }); return list.sort((a, b) => b.value - a.value); }, [portfolio, selectedAccountId, funds]);
   const healthMetrics = useMemo(() => { const currentCash = liquidityData[LiquidityTier.CASH] + liquidityData[LiquidityTier.HIGH]; const survivalMonths = monthlyExpenses > 0 ? (currentCash / monthlyExpenses).toFixed(1) : '∞'; let minBalance = Infinity; const lowLiquidityDates: { start: string, end: string }[] = []; let inLow = false; let startLow = ''; projectionData.forEach(p => { if (p.liquid < minBalance) minBalance = p.liquid; if (p.liquid < monthlyExpenses) { if (!inLow) { inLow = true; startLow = p.date; } } else { if (inLow) { inLow = false; lowLiquidityDates.push({ start: startLow, end: p.date }); } } }); if (inLow) lowLiquidityDates.push({ start: startLow, end: 'Period End' }); return { survivalMonths, minBalance, lowLiquidityDates }; }, [liquidityData, monthlyExpenses, projectionData]);
 
   const addCashFlow = () => {
@@ -842,12 +843,13 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
         if (selectedHoldingData.isExternal) {
           type = selectedHoldingData.externalType || FundType.STRATEGY;
         } else {
-          const f = MOCK_FUNDS.find(fund => fund.id === selectedHoldingData.fundId);
+          const f = funds.find(fund => fund.id === selectedHoldingData.fundId);
           if (f) type = f.type;
         }
         const tier = getLiquidityTier(type);
         settlementDays = getSettlementDays(tier);
       }
+
     } else if (planCategory === 'DIVIDEND' && selectedHoldingData) {
       finalAmount = Number(planAmount);
       finalDesc = `[分红] ${selectedHoldingData.displayName}`;
@@ -1093,12 +1095,79 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, updateHoldingRule: (
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="px-4 py-3 border-b border-gray-200 bg-gray-50"> <h3 className="font-bold text-gray-900">资产流动性配置</h3> </div> <div className="max-h-[600px] overflow-y-auto divide-y divide-gray-100"> {currentAccountHoldings.map((h, idx) => { let nav = 0; let navDate = ''; if (h.isExternal) { nav = h.externalNav || 0; navDate = h.externalNavDate || '未知日期'; } else { const f = MOCK_FUNDS.find(fund => fund.id === h.fundId); if (f) { nav = f.nav; navDate = new Date().toISOString().split('T')[0]; } } const amount = nav * h.shares; return (<div key={idx} className="p-4 hover:bg-gray-50"> <div className="flex justify-between items-start mb-2"> <div> <div className="font-medium text-gray-900 text-sm">{h.displayName}</div> <div className="text-xs text-gray-500 mt-0.5"> {h.isExternal ? '外部资产' : '公募基金'} · {h.redemptionRule ? (h.redemptionRule.ruleType === 'MONTHLY' ? '定期开放' : (h.redemptionRule.ruleType === 'FIXED_TERM' ? '到期自动赎回' : '每日开放')) : '默认规则'} </div> </div> <button onClick={() => openRuleModal(h.accountId, (h as any).originalIndex, h.displayName || '', h.redemptionRule)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded" > <Settings className="w-4 h-4" /> </button> </div> <div className="grid grid-cols-2 gap-2 text-xs mb-2 bg-gray-50/50 p-2 rounded border border-gray-100"> <div> <span className="text-gray-500 block">持有份额</span> <span className="font-mono text-gray-700">{h.shares.toLocaleString()}</span> </div> <div> <span className="text-gray-500 block">持仓金额</span> <span className="font-mono font-medium text-gray-900">¥{(amount / 10000).toFixed(2)}万</span> </div> <div> <span className="text-gray-500 block">最新净值</span> <span className="font-mono text-gray-700">{nav.toFixed(4)}</span> </div> <div> <span className="text-gray-500 block">净值日期</span> <span className="font-mono text-gray-700">{navDate}</span> </div> </div> <div className="flex items-center gap-2 text-xs"> <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600"> T+{h.redemptionRule?.settlementDays ?? getSettlementDays(h.isExternal ? (h.externalType ? getLiquidityTier(h.externalType) : LiquidityTier.MEDIUM) : (h.fundId ? getLiquidityTier(MOCK_FUNDS.find(f => f.id === h.fundId)?.type!) : LiquidityTier.MEDIUM))} </span> {h.redemptionRule?.ruleType === 'MONTHLY' && (<span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100"> 每月{h.redemptionRule.openDay}日开放 </span>)} {h.redemptionRule?.ruleType === 'FIXED_TERM' && (<span className="bg-purple-50 px-1.5 py-0.5 rounded text-purple-700 border border-purple-100"> {h.redemptionRule.maturityDate} 到期 </span>)} </div> </div>); })} </div> </div> </div> </div> <LiquidityRuleModal isOpen={ruleModalOpen} onClose={() => setRuleModalOpen(false)} holdingName={editingRuleContext?.hName || ''} currentRule={editingRuleContext?.rule} onSave={handleSaveRule} /> </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="px-4 py-3 border-b border-gray-200 bg-gray-50"> <h3 className="font-bold text-gray-900">资产流动性配置</h3> </div> <div className="max-h-[600px] overflow-y-auto divide-y divide-gray-100"> {currentAccountHoldings.map((h, idx) => {
+          let nav = 0;
+          let navDate = '';
+          let effectiveRuleType = 'DAILY';
+          let effectiveRuleDesc = '默认规则';
+          let settlementDays = 1;
+
+          if (h.isExternal) {
+            nav = h.externalNav || 0;
+            navDate = h.externalNavDate || '未知日期';
+            effectiveRuleDesc = '外部资产规则';
+            settlementDays = getSettlementDays(h.externalType ? getLiquidityTier(h.externalType) : LiquidityTier.MEDIUM);
+          } else {
+            const f = funds.find(fund => fund.id === h.fundId);
+            if (f) {
+              nav = f.nav;
+              navDate = new Date().toISOString().split('T')[0];
+              // Determine effective rule for display
+              if (f.liquidityRuleType) {
+                effectiveRuleType = f.liquidityRuleType;
+                if (effectiveRuleType === 'MONTHLY') effectiveRuleDesc = `定期开放 (每月${f.openDay}日)`;
+                else if (effectiveRuleType === 'FIXED_TERM') effectiveRuleDesc = `固定期限 (${f.maturityDate}到期)`;
+                else if (effectiveRuleType === 'DAILY') effectiveRuleDesc = '每日开放';
+                else effectiveRuleDesc = '自定义规则';
+
+                settlementDays = f.settlementDays ?? 1;
+              } else {
+                settlementDays = getSettlementDays(getLiquidityTier(f.type));
+              }
+            }
+          }
+
+          // Override if custom rule exists
+          if (h.redemptionRule) {
+            const r = h.redemptionRule;
+            if (r.ruleType === 'MONTHLY') effectiveRuleDesc = `定期开放 (每月${r.openDay}日)`;
+            else if (r.ruleType === 'FIXED_TERM') effectiveRuleDesc = `到期自动赎回`;
+            else effectiveRuleDesc = '每日开放';
+            effectiveRuleType = r.ruleType;
+            settlementDays = r.settlementDays;
+          }
+          const amount = nav * h.shares;
+          return (<div key={idx} className="p-4 hover:bg-gray-50"> <div className="flex justify-between items-start mb-2"> <div> <div className="font-medium text-gray-900 text-sm">{h.displayName}</div> <div className="text-xs text-gray-500 mt-0.5"> {h.isExternal ? '外部资产' : '公募基金'} · {effectiveRuleDesc} </div> </div> <button onClick={() => openRuleModal(h.accountId, (h as any).originalIndex, h.displayName || '', h.redemptionRule)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded" > <Settings className="w-4 h-4" /> </button> </div> <div className="grid grid-cols-2 gap-2 text-xs mb-2 bg-gray-50/50 p-2 rounded border border-gray-100"> <div> <span className="text-gray-500 block">持有份额</span> <span className="font-mono text-gray-700">{h.shares.toLocaleString()}</span> </div> <div> <span className="text-gray-500 block">持仓金额</span> <span className="font-mono font-medium text-gray-900">¥{(amount / 10000).toFixed(2)}万</span> </div> <div> <span className="text-gray-500 block">最新净值</span> <span className="font-mono text-gray-700">{nav.toFixed(4)}</span> </div> <div> <span className="font-mono text-gray-700">{navDate}</span> </div> </div> <div className="flex items-center gap-2 text-xs"> <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600"> T+{settlementDays} </span>
+            {effectiveRuleType === 'MONTHLY' && !h.redemptionRule && funds.find(f => f.id === h.fundId)?.openDay && (<span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100"> 每月{funds.find(f => f.id === h.fundId)?.openDay}日开放 </span>)}
+            {h.redemptionRule?.ruleType === 'MONTHLY' && (<span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100"> 每月{h.redemptionRule.openDay}日开放 </span>)}
+            {h.redemptionRule?.ruleType === 'FIXED_TERM' && (<span className="bg-purple-50 px-1.5 py-0.5 rounded text-purple-700 border border-purple-100"> {h.redemptionRule.maturityDate} 到期 </span>)}
+            {h.redemptionRule && (
+              <span className="bg-pink-50 pl-1.5 pr-1 py-0.5 rounded text-pink-700 border border-pink-100 flex items-center gap-1">
+                <Settings className="w-3 h-3" /> 个性化规则
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm('确认清除该资产的个性化流动性规则，恢复默认配置？')) {
+                      updateHoldingRule(h.accountId, (h as any).originalIndex, null);
+                    }
+                  }}
+                  className="hover:bg-pink-200 rounded-full p-0.5 ml-1 transition-colors"
+                  title="清除个性化规则"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
+          </div>
+          );
+        })} </div> </div> </div> </div> <LiquidityRuleModal isOpen={ruleModalOpen} onClose={() => setRuleModalOpen(false)} holdingName={editingRuleContext?.hName || ''} currentRule={editingRuleContext?.rule} onSave={handleSaveRule} /> </div>
   );
 };
 
 const App: React.FC = () => {
   const [patchRules, setPatchRules] = useState<PatchRule[]>([]);
+  const [funds, setFunds] = useState<Fund[]>(MOCK_FUNDS); // Initialize with Mock, replace with Real
   // Initialize with null or loading state if preferred, but for now we might keep mock as initial 
   // and then replace it to avoid breaking types or UI flickering, 
   // or better: start with null and show loading.
@@ -1128,6 +1197,14 @@ const App: React.FC = () => {
     };
     fetchPortfolio();
   }, []);
+
+  // Fetch Funds (Global Data)
+  useEffect(() => {
+    fetch('/api/funds')
+      .then(res => res.json())
+      .then(data => setFunds(data))
+      .catch(err => console.error("Error loading funds:", err));
+  }, [fundRefreshTrigger]); // Refetch funds when updated
 
   const handleAddPatchRule = async (rule: PatchRule) => {
     try {
@@ -1214,7 +1291,7 @@ const App: React.FC = () => {
   // However, the USER request said "Replace mock data source".
   // The primary data source is now API.
 
-  const handleUpdateHoldingRule = (accId: string, holdingIdx: number, rule: RedemptionRule) => {
+  const handleUpdateHoldingRule = (accId: string, holdingIdx: number, rule: RedemptionRule | null) => {
     if (!portfolio) return;
 
     // 1. Optimistic UI Update
@@ -1225,7 +1302,12 @@ const App: React.FC = () => {
           const newHoldings = [...acc.holdings];
           const holding = newHoldings[holdingIdx];
           if (holding) {
-            newHoldings[holdingIdx] = { ...holding, redemptionRule: rule };
+            if (rule === null) {
+              const { redemptionRule, ...rest } = holding;
+              newHoldings[holdingIdx] = rest;
+            } else {
+              newHoldings[holdingIdx] = { ...holding, redemptionRule: rule };
+            }
           }
           return { ...acc, holdings: newHoldings };
         }
@@ -1251,9 +1333,14 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveRule = (rule: RedemptionRule) => {
+  const handleSaveRule = (rule: RedemptionRule | null) => {
     if (editingRuleContext) {
       if (editingRuleContext.accId === 'FUND_UPDATE' && editingRuleContext.fundId) {
+        if (!rule) {
+          // Cannot clear fund rule to null here for now
+          alert("基金级规则不支持清除，请选择每日开放等选项");
+          return;
+        }
         // Fund Update Logic
         fetch(`/api/funds/${editingRuleContext.fundId}`, {
           method: 'PUT',
@@ -1367,7 +1454,7 @@ const App: React.FC = () => {
                 <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} refreshTrigger={fundRefreshTrigger} onEditLiquidity={(name, rule, fundId) => { setEditingRuleContext({ accId: 'FUND_UPDATE', hIdx: -1, hName: name, rule, fundId }); setRuleModalOpen(true); }} />} />
                 <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
                 <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
-                <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
+                <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} funds={funds} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
                 <Route path="/proposal" element={<ProposalGenerator />} />
               </Routes>
             ))}

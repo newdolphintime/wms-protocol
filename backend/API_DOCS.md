@@ -1,0 +1,157 @@
+# WMS Protocol Backend API 文档
+
+本文档详细描述了后端服务提供的 API 接口、数据模型及调用逻辑。
+
+## 1. 基金管理 (Funds)
+
+### 1.1 获取基金列表
+*   **Method**: `GET`
+*   **URL**: `/api/funds`
+*   **描述**: 获取系统内部的所有基金列表。支持通过名称或代码进行模糊搜索，以及按类型过滤。
+*   **参数**:
+    *   `keyword` (Query, Optional): 搜索关键词（匹配名称或代码）。
+    *   `type` (Query, Optional): 基金类型筛选。
+*   **响应**: `List[Fund]`
+    ```json
+    [
+      {
+        "id": "uuid",
+        "code": "510300",
+        "name": "沪深300ETF",
+        "liquidityRuleType": "DAILY", // 流动性规则类型
+        "settlementDays": 1,          // 赎回到账时间 (T+N)
+        ...
+      }
+    ]
+    ```
+
+### 1.2 获取基金详情
+*   **Method**: `GET`
+*   **URL**: `/api/funds/{fund_id}`
+*   **描述**: 获取单个基金的详细信息，包含完整的流动性规则属性。
+*   **响应**: `Fund`
+
+### 1.3 更新基金信息 (配置流动性)
+*   **Method**: `PUT`
+*   **URL**: `/api/funds/{fund_id}`
+*   **描述**: 更新基金的属性。目前主要用于配置基金级别的流动性规则。
+*   **调用逻辑**: 当用户在“基金详情页”点击配置流动性并保存时调用。
+*   **请求体**: `FundUpdate`
+    ```json
+    {
+      "liquidityRuleType": "MONTHLY",
+      "settlementDays": 5,
+      "openDay": 15,         // 每月15号开放
+      "hasLockup": false,
+      "maturityDate": "2025-12-31" 
+    }
+    ```
+*   **响应**: `{"message": "Fund updated successfully"}`
+
+### 1.4 获取基金净值历史
+*   **Method**: `GET`
+*   **URL**: `/api/funds/{fund_id}/history`
+*   **参数**: `days` (Optional) - 限制返回最近 N 天的数据。
+*   **描述**: 获取基金的历史净值走势。如果该基金应用了“数据拼接规则”，返回的数据将包含拼接后的模拟历史数据。
+
+### 1.5 添加数据拼接规则 (Patch Rule)
+*   **Method**: `POST`
+*   **URL**: `/api/patch-rules`
+*   **描述**: 为某个新发行的基金（Target）拼接一段历史数据（Proxy），用于回测或展示长期业绩。系统会自动处理拼接点的数据平滑（Backward/Forward Calculation）。
+*   **请求体**: `PatchRule`
+    ```json
+    {
+      "id": "uuid",
+      "target_fund_id": "fund_uuid",
+      "proxy_fund_id": "proxy_uuid",
+      "start_date": "2023-01-01",
+      "end_date": "2023-12-31"
+    }
+    ```
+
+---
+
+## 2. 持仓与投资组合 (Holdings & Portfolios)
+
+### 2.1 获取客户投资组合
+*   **Method**: `GET`
+*   **URL**: `/api/portfolios/{client_id}`
+*   **描述**: 获取指定客户的所有账户及持仓信息。这是前端核心数据接口。
+*   **响应**: `ClientPortfolio` (包含 Accounts -> Holdings)
+
+### 2.2 添加持仓
+*   **Method**: `POST`
+*   **URL**: `/api/holdings`
+*   **描述**: 在指定账户下添加一笔新的持仓。
+
+### 2.3 更新持仓 (关联产品/配置规则)
+*   **Method**: `PUT`
+*   **URL**: `/api/holdings/{holding_id}`
+*   **描述**: 更新持仓的配置。
+*   **主要场景**:
+    1.  **关联外部产品**: `externalProductId` 不为空时，持仓将自动继承该产品的净值和流动性规则。
+    2.  **自定义规则**: 更新 `redemptionConfig` 字段，为该持仓单独设置流动性。
+*   **请求体**: `HoldingUpdate`
+    ```json
+    {
+      "externalProductId": "product_uuid", // 可选：关联产品库，设为 null 也可以解除关联
+      "purchaseDate": "2024-01-01",        // 可选：用于计算锁定期
+      "redemptionConfig": null             // 可选：设置为 null 可清除个性化规则（恢复默认）
+    }
+    ```
+
+### 2.4 获取持仓有效流动性信息 (核心逻辑)
+*   **Method**: `GET`
+*   **URL**: `/api/holdings/{holding_id}/liquidity-info`
+*   **描述**: 计算并返回该持仓当前生效的流动性规则。
+*   **调用逻辑 (优先级解析)**:
+    1.  **外部产品 (External Product)**: 如果持仓关联了外部产品 (`external_product_id`)，系统优先使用该产品的规则。
+    2.  **系统基金 (Fund)**: 如果持仓是系统内部基金 (`fund_id`)，使用该基金配置的规则。
+    3.  **持仓配置 (Holding Config)**: 如果上述均无，或持仓有特定的覆盖配置 (`redemption_config`)，则使用持仓自身的配置。
+    4.  **默认值**: 默认为 T+1 日常赎回。
+*   **响应**: `LiquidityInfo`
+    ```json
+    {
+      "ruleType": "MONTHLY",
+      "source": "external_product", // 规则来源：用于前端展示“继承自xxx”
+      ...
+    }
+    ```
+
+### 2.5 删除持仓
+*   **Method**: `DELETE`
+*   **URL**: `/api/holdings/{holding_id}`
+
+---
+
+## 3. 外部产品库 (External Products)
+
+### 3.1 获取产品列表
+*   **Method**: `GET`
+*   **URL**: `/api/external-products`
+*   **描述**: 获取所有“运行中”的外部产品（非系统内部基金，如信托、私募等）。
+
+### 3.2 创建外部产品
+*   **Method**: `POST`
+*   **URL**: `/api/external-products`
+*   **描述**: 录入一个新的外部产品及其标准流动性条款。
+*   **用途**: 录入后，多个客户购买同一产品时，可以直接关联该产品ID，统一管理净值和规则。
+
+---
+
+## 4. 现金流管理 (Cash Flows)
+
+*   **GET /api/cash-flows**: 获取所有现金流记录。
+*   **POST /api/cash-flows/batch**: 批量录入现金流（支持同时创建重复规则 `recurringRule`）。
+*   **DELETE /api/cash-flows/{id}**: 删除单条现金流。
+
+## 数据模型说明 (Type Definitions)
+
+### LiquidityRuleType (Enum)
+*   `DAILY`: 每日开放 (如货币基金)
+*   `MONTHLY`: 每月特定日开放 (如 `openDay=15` 表示每月15号)
+*   `FIXED_TERM`: 封闭期固定 (有固定 `maturityDate`)
+*   `CUSTOM`: 自定义/其他
+
+### SettlementDays (Integer)
+*   赎回指令发出后，资金回到账户所需的交易日天数 (T+N)。
