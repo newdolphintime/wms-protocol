@@ -754,7 +754,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
     const redeemedAmounts = new Map<string, number>();
     const sortedFlows = [...cashFlows].sort((a, b) => a.date.localeCompare(b.date));
 
-    const holdingsWithArrival = currentAccountHoldings.map(h => { let val = 0; let type = FundType.STRATEGY; if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; } else { const f = funds.find(fund => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; } } const arrivalDate = calculateAvailabilityDate(today, h, type); arrivalDate.setHours(0, 0, 0, 0); return { ...h, value: val, arrivalDate: arrivalDate, uniqueKey: h.uniqueKey }; });
+
 
     for (let i = 0; i < days; i++) {
       const date = new Date(today); date.setDate(today.getDate() + i); date.setHours(0, 0, 0, 0);
@@ -772,32 +772,168 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
       const lockedDetailsList: { name: string; value: number; reason: string }[] = [];
       const liquidDetailsList: { name: string; value: number; reason: string }[] = [];
 
-      holdingsWithArrival.forEach(h => {
-        const redeemed = redeemedAmounts.get(h.uniqueKey) || 0;
-        const remainingVal = Math.max(0, h.value - redeemed);
-        if (remainingVal > 0) {
-          const isPeriodic = h.redemptionRule?.ruleType === 'MONTHLY';
-          const hasLockup = !!h.redemptionRule?.lockupEndDate;
-          const isFixedTerm = h.redemptionRule?.ruleType === 'FIXED_TERM';
+      currentAccountHoldings.forEach(h => {
+        let val = 0;
+        let type = FundType.STRATEGY;
+        // Re-calculate value (simplified, assuming constant NAV for projection or using holding list)
+        // Optimization: Use pre-calculated values from holdingsWithArrival but disregard arrivalDate
+        if (h.isExternal) { val = (h.externalNav || 0) * h.shares; type = h.externalType || FundType.STRATEGY; }
+        else { const f = funds.find(fund => fund.id === h.fundId); if (f) { val = f.nav * h.shares; type = f.type; } }
 
-          if (!isPeriodic && date.getTime() >= h.arrivalDate.getTime()) {
+        const redeemed = redeemedAmounts.get(h.uniqueKey) || 0;
+        const remainingVal = Math.max(0, val - redeemed);
+
+        if (remainingVal > 0) {
+          // Determine Liquidity Status ON THIS DAY
+          let isLiquid = false;
+          let reason = "";
+
+          // 1. Resolve Rules
+          let ruleType = 'DAILY';
+          let openDay = 15;
+          let settlementDays = 1;
+          let maturityDate: string | undefined = undefined;
+          let lockupEndDate: string | undefined = undefined;
+
+          // Prefer Custom Rule -> Fund Rule -> Default
+          if (h.redemptionRule) {
+            ruleType = h.redemptionRule.ruleType;
+            if (h.redemptionRule.openDay) openDay = h.redemptionRule.openDay;
+            if (h.redemptionRule.settlementDays) settlementDays = h.redemptionRule.settlementDays;
+            if (h.redemptionRule.maturityDate) maturityDate = h.redemptionRule.maturityDate;
+            if (h.redemptionRule.lockupEndDate) lockupEndDate = h.redemptionRule.lockupEndDate;
+          } else if (!h.isExternal) {
+            const f = funds.find(fund => fund.id === h.fundId);
+            if (f) {
+              if (f.liquidityRuleType) {
+                ruleType = f.liquidityRuleType;
+                if (f.openDay) openDay = f.openDay;
+                if (f.settlementDays) settlementDays = f.settlementDays;
+                if (f.maturityDate) maturityDate = f.maturityDate; // Fixed Term fund
+                if (f.hasLockup && f.lockupDays) {
+                  // Note: generic lockup not fully implemented
+                }
+              } else {
+                // Legacy Type Mapping
+                settlementDays = getSettlementDays(getLiquidityTier(f.type));
+              }
+            }
+          } else {
+            // External with no custom rule
+            settlementDays = getSettlementDays(h.externalType ? getLiquidityTier(h.externalType) : LiquidityTier.MEDIUM);
+          }
+
+          // 2. Logic: Liquid if "Initiation Date" was valid AND not locked
+          // Initiation Date = Simulation Date - Settlement Days
+          const initiationDate = new Date(date);
+          initiationDate.setDate(date.getDate() - settlementDays);
+          initiationDate.setHours(0, 0, 0, 0);
+
+          let lockedByRules = false;
+
+          // Special Case: FIXED_TERM (Auto Redeem)
+          // For Fixed Term, if we are past Maturity + Settlement, we have cash.
+          if (ruleType === 'FIXED_TERM' && maturityDate) {
+            const mat = new Date(maturityDate); mat.setHours(0, 0, 0, 0);
+            const arrival = new Date(mat); arrival.setDate(mat.getDate() + settlementDays);
+
+            if (date.getTime() >= arrival.getTime()) {
+              isLiquid = true;
+              reason = `已到期到账 (到期:${maturityDate})`;
+            } else {
+              if (date.getTime() >= mat.getTime()) {
+                isLiquid = false;
+                reason = `赎回结算中 (到期:${maturityDate})`;
+              } else {
+                isLiquid = false;
+                reason = `持有至到期 (到期:${maturityDate})`;
+              }
+            }
+            lockedByRules = true; // Logic handled
+          }
+
+          if (!lockedByRules) {
+            // Check Lockup on Initiation Date
+            if (lockupEndDate) {
+              const end = new Date(lockupEndDate); end.setHours(0, 0, 0, 0);
+              if (initiationDate.getTime() < end.getTime()) {
+                lockedByRules = true;
+                reason = `处于锁定期 (至 ${lockupEndDate})`;
+              }
+            }
+
+            // CRITIAL UPDATE: Forward-Looking Restraint.
+            // We cannot assume we redeemed in the past (before Today). 
+            // If Initiation Date < Today, we effectively "missed" that chance or it's purely hypothetical history.
+            if (!lockedByRules && initiationDate.getTime() < today.getTime()) {
+              lockedByRules = true;
+              reason = `需T+${settlementDays}结算 (今日不可用)`;
+            }
+
+            // 2b. Dynamic Countdown Logic for "Forward Looking" view
+            // We want to show "T+3" on Day 0, "T+2" on Day 1, "T+0" on Day 3.
+            // i is the loop index (Days from Today).
+            const daysPassed = i; // This is provided by the loop variable
+            const remainingSettlement = Math.max(0, settlementDays - daysPassed);
+
+            if (!lockedByRules) {
+              if (ruleType === 'DAILY') {
+                if (remainingSettlement > 0) {
+                  // Locked due to settlement delay
+                  // Use specific reason to override generic lockedByRules logic if needed
+                  // But we need to set lockedByRules = true to force it into locked bucket?
+                  // My previous logic used 'initiationDate < today' to lock it.
+                  // That logic is compatible: initiationDate < today IS equivalent to remainingSettlement > 0 for Daily.
+                  // We just need to update the REASON to be dynamic.
+
+                  // We reset lockedByRules to handle it explicitly here for better text
+                  lockedByRules = true;
+                  reason = `赎回结算中 (T+${remainingSettlement}到账)`;
+                } else {
+                  isLiquid = true;
+                  reason = "每日开放";
+                }
+              } else if (ruleType === 'MONTHLY') {
+                if (initiationDate.getDate() === openDay && initiationDate.getTime() >= today.getTime()) {
+                  isLiquid = true;
+                  reason = `开放日赎回 (资金到账)`;
+                } else {
+                  isLiquid = false;
+                  // If we are strictly waiting for settlement from a valid open day:
+                  // logic is complex. Generic "Non-Available" is safer.
+                  if (initiationDate.getDate() === openDay) {
+                    // It meant we acted on Open Day, but it was in the past (before Today). 
+                    // This branch is theoretically impossible given 'initiationDate >= today' check above.
+                    reason = "待结算";
+                  } else {
+                    reason = `非资金到账日 (开放日:每月${openDay}日, T+${settlementDays})`;
+                  }
+                }
+              } else if (ruleType === 'FIXED_TERM') {
+                isLiquid = true;
+                reason = "已开放";
+              }
+            } else {
+              // Update reason for the Forward-Looking Constraint if it was Daily
+              if (ruleType === 'DAILY' && initiationDate.getTime() < today.getTime()) {
+                reason = `赎回结算中 (T+${remainingSettlement}到账)`;
+              }
+            }
+          }
+
+
+          if (isLiquid) {
             liquidAssetsFromHoldings += remainingVal;
-            liquidDetailsList.push({ name: h.displayName || '未知资产', value: remainingVal, reason: '已开放赎回' });
+            liquidDetailsList.push({ name: h.displayName || '未知资产', value: remainingVal, reason: reason });
           } else {
             lockedAssets += remainingVal;
-            let reason = "";
-            const diffTime = h.arrivalDate.getTime() - date.getTime();
-            const daysUntilArrival = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            if (isFixedTerm && h.redemptionRule?.maturityDate) { reason = `持有至到期 (到期日: ${h.redemptionRule.maturityDate})`; }
-            else if (hasLockup) { const lockupEnd = new Date(h.redemptionRule!.lockupEndDate!); lockupEnd.setHours(0, 0, 0, 0); if (date.getTime() < lockupEnd.getTime()) { reason = `处于锁定期 (至 ${h.redemptionRule!.lockupEndDate})`; } }
-            if (!reason) { if (isPeriodic) { const settlementDays = h.redemptionRule?.settlementDays || 0; const openDate = new Date(h.arrivalDate); openDate.setDate(openDate.getDate() - settlementDays); if (date.getTime() < openDate.getTime()) { reason = `非开放期 (每月${h.redemptionRule?.openDay}日)`; } else { reason = `赎回结算中 (T+${Math.max(0, daysUntilArrival)})`; } } else { reason = `赎回结算中 (T+${Math.max(0, daysUntilArrival)})`; } }
             lockedDetailsList.push({ name: h.displayName || '未知资产', value: remainingVal, reason: reason });
           }
         }
       });
 
       if (currentCash > 0) {
-        liquidDetailsList.unshift({ name: '现金余额', value: currentCash, reason: 'T+0 实时可用' });
+        liquidDetailsList.unshift({ name: '现金余额', value: currentCash, reason: '实时可用' });
       } else if (currentCash < 0) {
         liquidDetailsList.unshift({ name: '现金缺口', value: currentCash, reason: '资金不足' });
       }
@@ -1137,10 +1273,8 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
             settlementDays = r.settlementDays;
           }
           const amount = nav * h.shares;
-          return (<div key={idx} className="p-4 hover:bg-gray-50"> <div className="flex justify-between items-start mb-2"> <div> <div className="font-medium text-gray-900 text-sm">{h.displayName}</div> <div className="text-xs text-gray-500 mt-0.5"> {h.isExternal ? '外部资产' : '公募基金'} · {effectiveRuleDesc} </div> </div> <button onClick={() => openRuleModal(h.accountId, (h as any).originalIndex, h.displayName || '', h.redemptionRule)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded" > <Settings className="w-4 h-4" /> </button> </div> <div className="grid grid-cols-2 gap-2 text-xs mb-2 bg-gray-50/50 p-2 rounded border border-gray-100"> <div> <span className="text-gray-500 block">持有份额</span> <span className="font-mono text-gray-700">{h.shares.toLocaleString()}</span> </div> <div> <span className="text-gray-500 block">持仓金额</span> <span className="font-mono font-medium text-gray-900">¥{(amount / 10000).toFixed(2)}万</span> </div> <div> <span className="text-gray-500 block">最新净值</span> <span className="font-mono text-gray-700">{nav.toFixed(4)}</span> </div> <div> <span className="font-mono text-gray-700">{navDate}</span> </div> </div> <div className="flex items-center gap-2 text-xs"> <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600"> T+{settlementDays} </span>
-            {effectiveRuleType === 'MONTHLY' && !h.redemptionRule && funds.find(f => f.id === h.fundId)?.openDay && (<span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100"> 每月{funds.find(f => f.id === h.fundId)?.openDay}日开放 </span>)}
-            {h.redemptionRule?.ruleType === 'MONTHLY' && (<span className="bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 border border-amber-100"> 每月{h.redemptionRule.openDay}日开放 </span>)}
-            {h.redemptionRule?.ruleType === 'FIXED_TERM' && (<span className="bg-purple-50 px-1.5 py-0.5 rounded text-purple-700 border border-purple-100"> {h.redemptionRule.maturityDate} 到期 </span>)}
+          return (<div key={idx} className="p-4 hover:bg-gray-50"> <div className="flex justify-between items-start mb-2"> <div> <div className="font-medium text-gray-900 text-sm">{h.displayName}</div> <div className="flex items-center gap-2 mt-1"> <span className="text-xs text-gray-500">{h.isExternal ? '外部资产' : '公募基金'}</span> <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${effectiveRuleType === 'DAILY' ? 'bg-green-50 text-green-700 border-green-200' : effectiveRuleType === 'MONTHLY' ? 'bg-amber-50 text-amber-700 border-amber-200' : effectiveRuleType === 'FIXED_TERM' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>{effectiveRuleDesc}</span> </div> </div> <button onClick={() => openRuleModal(h.accountId, (h as any).originalIndex, h.displayName || '', h.redemptionRule)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 rounded" > <Settings className="w-4 h-4" /> </button> </div> <div className="grid grid-cols-2 gap-2 text-xs mb-2 bg-gray-50/50 p-2 rounded border border-gray-100"> <div> <span className="text-gray-500 block">持有份额</span> <span className="font-mono text-gray-700">{h.shares.toLocaleString()}</span> </div> <div> <span className="text-gray-500 block">持仓金额</span> <span className="font-mono font-medium text-gray-900">¥{(amount / 10000).toFixed(2)}万</span> </div> <div> <span className="text-gray-500 block">最新净值</span> <span className="font-mono text-gray-700">{nav.toFixed(4)}</span> </div> <div> <span className="font-mono text-gray-700">{navDate}</span> </div> </div> <div className="flex items-center gap-2 text-xs"> <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600"> T+{settlementDays} </span>
+
             {h.redemptionRule && (
               <span className="bg-pink-50 pl-1.5 pr-1 py-0.5 rounded text-pink-700 border border-pink-100 flex items-center gap-1">
                 <Settings className="w-3 h-3" /> 个性化规则

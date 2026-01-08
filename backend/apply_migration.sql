@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS external_products (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_product_type (product_type),
     INDEX idx_status (status)
-) COMMENT='External Product Library' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) COMMENT='External Product Library' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 3. Update holdings table
 DROP PROCEDURE IF EXISTS upgrade_holdings_table;

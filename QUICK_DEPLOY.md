@@ -37,11 +37,17 @@ pip install -r requirements.txt
    mysql -u root -p -e "DROP DATABASE IF EXISTS wms; CREATE DATABASE wms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
    ```
 
-2. **导入表结构**:
-   ```bash
-   # 导入新的表结构
    mysql -u root -p wms < schema.sql
    ```
+
+## 步骤 3.5: 数据库升级 (仅限更新部署)
+**注意**: 如果你已经在运行旧版本且**需要保留数据**，请不要重新运行步骤 3，而是执行以下迁移脚本：
+
+```bash
+cd backend
+mysql -u root -p wms < apply_migration.sql
+```
+此脚本会添加 `external_products` 表并更新 `funds` 和 `holdings` 表结构，而不会删除现有数据。
 
 3. **导入初始数据**:
    ```bash
