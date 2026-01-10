@@ -264,6 +264,10 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
         return data;
     }, [portfolio, cashFlows, liquidityData, selectedAccountId, currentAccountHoldings, funds]);
 
+    const firstDeficit = useMemo(() => {
+        return projectionData.find(d => d.liquid < 0);
+    }, [projectionData]);
+
     // Initialize selection with first row after data is ready
     useEffect(() => {
         if (projectionData.length > 0 && !selectedRowData) {
@@ -423,6 +427,25 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                                     }
                                     <span className="text-xs font-bold">{selectedRowData.liquid >= 0 ? '流动性健康' : '存在缺口'}</span>
                                 </div>
+                            </div>
+
+                            <div className={`px-6 py-3 border-b border-gray-100 text-sm leading-relaxed ${firstDeficit ? 'bg-red-50/50' : 'bg-green-50/50'}`}>
+                                {firstDeficit ? (
+                                    <>
+                                        <span className="text-gray-600">您的资金流动性在当年 </span>
+                                        <span className="text-red-600 font-bold">【不健康】</span>
+                                        <span className="text-gray-600">，预计未来 </span>
+                                        <span className="text-red-600 font-bold">【{firstDeficit.date}】</span>
+                                        <span className="text-gray-600"> 资金流动性为负，缺口为 </span>
+                                        <span className="text-red-600 font-bold font-mono">【{Math.abs(firstDeficit.liquid).toLocaleString()}】</span>
+                                        <span className="text-gray-600"> 元，请补足缺口。</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="text-gray-600">您的资金流动性在当年 </span>
+                                        <span className="text-green-600 font-bold">【健康】</span>
+                                    </>
+                                )}
                             </div>
 
                             <div className="p-6 space-y-6">
