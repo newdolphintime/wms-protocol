@@ -11,6 +11,38 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv(dotenv_path="../.env.local")
 
+# --- Logging Configuration ---
+import logging
+import sys
+from logging.handlers import RotatingFileHandler
+
+# Ensure LOG directory exists relative to project root (assuming running from backend dir or root)
+# Strategy: Look for "LOG" folder in parent or current directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+LOG_DIR = os.path.join(PROJECT_ROOT, "LOG")
+
+if not os.path.exists(LOG_DIR):
+    try:
+        os.makedirs(LOG_DIR)
+    except Exception as e:
+        print(f"Failed to create LOG dir at {LOG_DIR}: {e}")
+        LOG_DIR = "." # Fallback
+
+log_file_path = os.path.join(LOG_DIR, "backend.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        RotatingFileHandler(log_file_path, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger("wms_backend")
+logger.info(f"Logging initialized. Logs writing to: {log_file_path}")
+
 app = FastAPI()
 
 @app.on_event("startup")

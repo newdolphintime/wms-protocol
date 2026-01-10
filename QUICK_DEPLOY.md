@@ -63,9 +63,13 @@ mysql -u root -p wms < apply_migration.sql
 # ps -ef | grep main.py
 # kill <PID>
 
-# 2. 启动新服务 (日志输出到 server.log)
-nohup python3 main.py > server.log 2>&1 &
+# 2. 启动新服务 (日志输出到 ../LOG/server.log)
+nohup python3 main.py > ../LOG/server.log 2>&1 &
 ```
+
+> **注意**: 
+> - 应用内部日志 (API请求、错误等) 会自动写入 `../LOG/backend.log` (每天滚动)。
+> - 启动时的控制台输出 (Uvicorn 启动信息) 会写入 `../LOG/server.log`。
 
 ## 步骤 5: 配置防火墙/安全组
 确保腾讯云控制台的安全组规则允许 **TCP 8001** 端口的入站流量。
@@ -81,7 +85,8 @@ nohup python3 main.py > server.log 2>&1 &
 ### 常用验证与维护
 
 - **访问网站**: `http://<服务器IP>:8001`
-- **查看日志**: `tail -f server.log`
+- **查看启动日志**: `tail -f ../LOG/server.log`
+- **查看应用日志**: `tail -f ../LOG/backend.log`
 - **停止服务**: 
   ```bash
   ps -ef | grep main.py
