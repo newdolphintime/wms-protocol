@@ -31,6 +31,20 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
     const [loading, setLoading] = useState(true);
     const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
     const [selectedRowData, setSelectedRowData] = useState<any>(null);
+    const [statisticsPeriod, setStatisticsPeriod] = useState<'WEEK' | 'MONTH' | 'YEAR'>('MONTH');
+
+    const getPeriodKey = (dateStr: string, period: 'WEEK' | 'MONTH' | 'YEAR') => {
+        const date = new Date(dateStr);
+        if (period === 'YEAR') return `${date.getFullYear()}年度`;
+        if (period === 'MONTH') return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+
+        // Week: Find the Monday of the week
+        const day = date.getDay();
+        const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+        const monday = new Date(date.setDate(diff));
+        return `${monday.getFullYear()}-W${Math.ceil((((monday.getTime() - new Date(monday.getFullYear(), 0, 1).getTime()) / 86400000) + 1) / 7)} (${monday.getMonth() + 1}.${monday.getDate()})`;
+    };
+
 
     useEffect(() => {
         fetch('/api/cash-flows')
@@ -256,6 +270,7 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                 locked: lockedAssets,
                 expense: -outflow,
                 rawExpense: outflow,
+                inflow: inflow,
                 liquidBreakdown: liquidDetailsList,
                 lockedBreakdown: lockedDetailsList,
                 expenseBreakdown: expenseBreakdown
@@ -267,6 +282,24 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
     const firstDeficit = useMemo(() => {
         return projectionData.find(d => d.liquid < 0);
     }, [projectionData]);
+
+    const groupedStats = useMemo(() => {
+        const groups: Record<string, { label: string, minLiquid: number, netFlow: number, count: number }> = {};
+
+        projectionData.forEach(row => {
+            const key = getPeriodKey(row.date, statisticsPeriod);
+            if (!groups[key]) {
+                groups[key] = { label: key, minLiquid: Infinity, netFlow: 0, count: 0 };
+            }
+            groups[key].minLiquid = Math.min(groups[key].minLiquid, row.liquid);
+            // Now we have 'inflow' in projectionData
+            // @ts-ignore
+            const inflow = row.inflow || 0;
+            groups[key].netFlow += (inflow - row.rawExpense);
+        });
+
+        return Object.values(groups);
+    }, [projectionData, statisticsPeriod]);
 
     // Initialize selection with first row after data is ready
     useEffect(() => {
@@ -407,9 +440,70 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                 </div>
 
                 {/* Right: Sticky Detail Panel (4 cols) */}
-                <div className="lg:col-span-4 sticky top-6">
+                <div className="lg:col-span-4 sticky top-6 space-y-6">
+                    {/* Period Statistics Panel */}
+                    <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-gray-100 overflow-hidden">
+                        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/30">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                                <Activity className="w-4 h-4 text-indigo-500" />
+                                周期性流动性报表
+                            </h3>
+                            <div className="flex bg-gray-100 p-1 rounded-lg">
+                                {(['WEEK', 'MONTH', 'YEAR'] as const).map(period => (
+                                    <button
+                                        key={period}
+                                        onClick={() => setStatisticsPeriod(period)}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${statisticsPeriod === period
+                                            ? 'bg-white text-indigo-600 shadow-sm'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                            }`}
+                                    >
+                                        {{ WEEK: '周度', MONTH: '月度', YEAR: '年度' }[period]}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-gray-500 bg-gray-50/50 uppercase sticky top-0 backdrop-blur-sm">
+                                    <tr>
+                                        <th className="px-5 py-3 font-medium">周期</th>
+                                        <th className="px-5 py-3 font-medium text-right">最低水位</th>
+                                        <th className="px-5 py-3 font-medium text-right">净收支</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {groupedStats.map((stat, idx) => (
+                                        <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
+                                            <td className="px-5 py-3 text-gray-600 font-medium whitespace-nowrap">
+                                                {stat.label}
+                                            </td>
+                                            <td className="px-5 py-3 text-right">
+                                                <span className={`font-mono font-bold ${stat.minLiquid < 0 ? 'text-red-500' : 'text-green-600'}`}>
+                                                    {stat.minLiquid < 0 ? '-' : ''}¥{Math.abs(stat.minLiquid / 10000).toFixed(1)}w
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-3 text-right">
+                                                <span className={`font-mono ${stat.netFlow >= 0 ? 'text-indigo-600' : 'text-orange-500'}`}>
+                                                    {stat.netFlow >= 0 ? '+' : ''}¥{(stat.netFlow / 10000).toFixed(1)}w
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {groupedStats.length === 0 && (
+                                        <tr>
+                                            <td colSpan={3} className="px-5 py-8 text-center text-gray-400 text-xs">
+                                                无统计数据
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     {selectedRowData ? (
-                        <div className="bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 transition-all duration-300 overflow-hidden">
+                        <div className="bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 transition-all duration-300 overflow-hidden max-h-[calc(100vh-18rem)] overflow-y-auto custom-scrollbar">
                             {/* Panel Header */}
                             <div className={`px-6 py-5 border-b border-gray-100 flex items-center justify-between ${selectedRowData.liquid >= 0 ? 'bg-gradient-to-r from-green-50/50 to-white' : 'bg-gradient-to-r from-red-50/50 to-white'
                                 }`}>
@@ -462,7 +556,7 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                                     </div>
 
                                     {selectedRowData.liquidBreakdown && selectedRowData.liquidBreakdown.length > 0 ? (
-                                        <div className="bg-gray-50 rounded-xl border border-gray-100 p-1 max-h-[260px] overflow-y-auto custom-scrollbar">
+                                        <div className="bg-gray-50 rounded-xl border border-gray-100 p-1">
                                             {selectedRowData.liquidBreakdown.map((item: any, idx: number) => (
                                                 <div key={idx} className="flex justify-between items-center p-3 hover:bg-white hover:shadow-sm rounded-lg transition-all group/item">
                                                     <div className="flex flex-col min-w-0 pr-2">
@@ -493,7 +587,7 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                                     </div>
 
                                     {selectedRowData.lockedBreakdown && selectedRowData.lockedBreakdown.length > 0 && (
-                                        <div className="bg-white rounded-xl border border-gray-100 p-1 max-h-[220px] overflow-y-auto custom-scrollbar shadow-sm">
+                                        <div className="bg-white rounded-xl border border-gray-100 p-1 shadow-sm">
                                             {selectedRowData.lockedBreakdown.map((item: any, idx: number) => (
                                                 <div key={idx} className="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
                                                     <div className="flex flex-col min-w-0 pr-2">
