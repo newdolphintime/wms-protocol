@@ -440,9 +440,9 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                 </div>
 
                 {/* Right: Sticky Detail Panel (4 cols) */}
-                <div className="lg:col-span-4 sticky top-6 space-y-6">
+                <div className="lg:col-span-4 sticky top-6 h-[calc(100vh-3rem)] flex flex-col gap-4">
                     {/* Period Statistics Panel */}
-                    <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-gray-100 overflow-hidden">
+                    <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-gray-100 overflow-hidden flex flex-col shrink-0 max-h-[40%]">
                         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/30">
                             <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
                                 <Activity className="w-4 h-4 text-indigo-500" />
@@ -463,7 +463,7 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                                 ))}
                             </div>
                         </div>
-                        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
                             <table className="w-full text-sm text-left">
                                 <thead className="text-xs text-gray-500 bg-gray-50/50 uppercase sticky top-0 backdrop-blur-sm">
                                     <tr>
@@ -503,7 +503,7 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                     </div>
 
                     {selectedRowData ? (
-                        <div className="bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 transition-all duration-300 overflow-hidden max-h-[calc(100vh-18rem)] overflow-y-auto custom-scrollbar">
+                        <div className="bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 transition-all duration-300 overflow-hidden flex flex-col flex-1 min-h-0">
                             {/* Panel Header */}
                             <div className={`px-6 py-5 border-b border-gray-100 flex items-center justify-between ${selectedRowData.liquid >= 0 ? 'bg-gradient-to-r from-green-50/50 to-white' : 'bg-gradient-to-r from-red-50/50 to-white'
                                 }`}>
@@ -542,7 +542,7 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                                 )}
                             </div>
 
-                            <div className="p-6 space-y-6">
+                            <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
                                 {/* Liquid Section */}
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-end">
