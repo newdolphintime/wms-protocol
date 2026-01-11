@@ -208,6 +208,11 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                         lockedByRules = true;
                     }
 
+
+                    // Dynamic Countdown for "Forward Looking" view
+                    const daysPassed = i;
+                    const remainingSettlement = Math.max(0, settlementDays - daysPassed);
+
                     if (!lockedByRules) {
                         if (ruleType === 'DAILY') {
                             isLiquid = true;
@@ -239,7 +244,7 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                             }
                         }
                     } else if (ruleType === 'DAILY' && initiationDate.getTime() < today.getTime()) {
-                        reason = `赎回结算中 (T+${settlementDays})`;
+                        reason = `赎回结算中 (T+${remainingSettlement}到账)`;
                     } else if (h.redemptionRule?.lockupEndDate) {
                         reason = `处于锁定期 (至${h.redemptionRule.lockupEndDate})`;
                     }
