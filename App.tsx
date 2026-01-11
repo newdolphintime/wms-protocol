@@ -49,6 +49,7 @@ import {
   Calendar as CalendarIcon,
   BookOpen
 } from 'lucide-react';
+import ClientListPage from './ClientListPage';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, PieChart, Pie, AreaChart, Area, ComposedChart, ReferenceLine } from 'recharts';
 import { MOCK_FUNDS, MOCK_PORTFOLIO, generateChartData, generateFundHistory, getLiquidityTier, getSettlementDays, calculateAvailabilityDate } from './services/dataService';
 import { analyzeFunds } from './services/geminiService';
@@ -1551,6 +1552,7 @@ const App: React.FC = () => {
             <NavLink to="/comparison" icon={<BarChart2 className="w-5 h-5" />} label="业绩对比" />
 
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2 mt-6">客户账户</div>
+            <NavLink to="/clients" icon={<Users className="w-5 h-5" />} label="客户列表" />
             <NavLink to="/portfolio" icon={<Briefcase className="w-5 h-5" />} label="持仓分析" />
             <NavLink to="/liquidity" icon={<Droplet className="w-5 h-5" />} label="流动性测算" />
 
@@ -1591,6 +1593,7 @@ const App: React.FC = () => {
                 <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
                 <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} funds={funds} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
                 <Route path="/liquidity/long-term" element={<LongTermForecastPage portfolio={portfolio} funds={funds} />} />
+                <Route path="/clients" element={<ClientListPage />} />
                 <Route path="/proposal" element={<ProposalGenerator />} />
               </Routes>
             ))}
