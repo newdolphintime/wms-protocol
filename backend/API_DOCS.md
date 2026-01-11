@@ -7,6 +7,7 @@
 > **Version History**:
 > - v20260108.v1: 新增 `PUT /api/funds/{id}` 配置流动性
 > - v20260108.v2: `PUT /api/holdings/{id}` 支持清除规则
+> - v20260111.v1: 完善外部产品 (External Products) 与现金流 (Cash Flows) 接口定义
 
 ### 1.1 获取基金列表
 *   **Method**: `GET`
@@ -140,15 +141,69 @@
 *   **Method**: `POST`
 *   **URL**: `/api/external-products`
 *   **描述**: 录入一个新的外部产品及其标准流动性条款。
-*   **用途**: 录入后，多个客户购买同一产品时，可以直接关联该产品ID，统一管理净值和规则。
+*   **请求体**: `ExternalProductCreate`
+    ```json
+    {
+      "productName": "阿尔法私募一期",
+      "productCode": "PE-001",
+      "productType": "PRIVATE_EQUITY", // Enum: PRIVATE_EQUITY, TRUST, OFFSHORE, OTHER
+      "issuer": "阿尔法资产",
+      "latestNav": 1.05,
+      "navDate": "2024-01-01",
+      "liquidityRuleType": "QUARTERLY",
+      "openDay": 1,          // 季度首月1号开放
+      "settlementDays": 10,  // T+10
+      "hasLockup": true,
+      "lockupDays": 180,
+      "description": "备注说明..."
+    }
+    ```
+*   **响应**: `{"id": "uuid", "message": "Product created successfully"}`
 
 ---
 
 ## 4. 现金流管理 (Cash Flows)
 
-*   **GET /api/cash-flows**: 获取所有现金流记录。
-*   **POST /api/cash-flows/batch**: 批量录入现金流（支持同时创建重复规则 `recurringRule`）。
-*   **DELETE /api/cash-flows/{id}**: 删除单条现金流。
+### 4.1 获取现金流列表
+*   **Method**: `GET`
+*   **URL**: `/api/cash-flows`
+*   **响应**: `List[CashFlowItem]`
+    ```json
+    [
+      {
+        "id": "uuid",
+        "date": "2025-01-15",
+        "amount": 50000,
+        "type": "INFLOW", // INFLOW or OUTFLOW
+        "description": "分红收入",
+        "recurringRuleId": "rule-uuid", // 如果关联了周期规则
+        "relatedHoldingKey": "fund-uuid" // 关联的持仓/基金
+      }
+    ]
+    ```
+
+### 4.2 批量添加现金流
+*   **Method**: `POST`
+*   **URL**: `/api/cash-flows/batch`
+*   **描述**: 批量录入现金流，常用于生成周期性计划（如“每月定投”）。
+*   **请求体**: `BatchCashFlowRequest`
+    ```json
+    {
+      "flows": [
+          { "id": "1", "date": "2025-01-01", "amount": 10000, "type": "INFLOW", ... }
+      ],
+      "rule": { // 可选：定义周期规则元数据
+        "id": "r1", 
+        "frequency": "MONTHLY", 
+        "count": 12 
+      }
+    }
+    ```
+*   **响应**: `{"message": "Batch save successful", "count": 12}`
+
+### 4.3 删除现金流
+*   **Method**: `DELETE`
+*   **URL**: `/api/cash-flows/{flow_id}`
 
 ## 数据模型说明 (Type Definitions)
 
