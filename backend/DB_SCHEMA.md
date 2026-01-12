@@ -86,6 +86,12 @@
 | :--- | :--- | :--- |
 | `id` | VARCHAR(36) | 客户ID |
 | `name` | VARCHAR(100) | 客户姓名 |
+| `phone` | VARCHAR(20) | 手机号 |
+| `gender` | ENUM | 性别 (M, F) |
+| `status` | ENUM | 状态 (ACTIVE, POTENTIAL, INACTIVE, VIP) |
+| `risk_level` | VARCHAR(50) | 风险偏好 (e.g. C3-稳健型) |
+| `last_contact_date` | DATE | 最后联系日期 |
+| `tags` | JSON | 客户标签 ([{id, label, color}]) |
 
 ### 3.2 accounts (账户)
 | 字段名 | 类型 | 描述 |

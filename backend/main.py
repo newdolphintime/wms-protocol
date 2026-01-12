@@ -71,6 +71,15 @@ def startup_db_migration():
         add_col("funds", "maturity_date DATE NULL COMMENT 'Maturity Date for FIXED_TERM'", "maturity_date")
         add_col("funds", "liquidity_notes TEXT NULL COMMENT 'Additional notes for liquidity'", "liquidity_notes")
         
+        # Clients Table Migration
+        add_col("clients", "phone VARCHAR(20) NULL", "phone")
+        add_col("clients", "gender ENUM('M', 'F') NULL", "gender")
+        add_col("clients", "status ENUM('ACTIVE', 'POTENTIAL', 'INACTIVE', 'VIP') DEFAULT 'POTENTIAL'", "status")
+        add_col("clients", "risk_level VARCHAR(50) NULL", "risk_level")
+        add_col("clients", "last_contact_date DATE NULL", "last_contact_date")
+        add_col("clients", "tags JSON NULL", "tags")
+        
+        # Cash Flows Table Client ID
         conn.commit()
         cursor.close()
         conn.close()
@@ -228,6 +237,25 @@ class ClientPortfolio(BaseModel):
     clientName: str
     accounts: List[Account] = []
 
+class ClientTag(BaseModel):
+    id: str
+    label: str
+    color: str
+
+class ClientCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    gender: str = 'M'
+    status: str = 'POTENTIAL'
+    riskLevel: str = 'C1-保守型'
+    lastContactDate: Optional[date] = None
+    tags: List[ClientTag] = []
+
+class ClientResponse(ClientCreate):
+    id: str
+    totalAum: float = 0
+    model_config = ConfigDict(from_attributes=True)
+
 def get_db_connection():
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -235,6 +263,109 @@ def get_db_connection():
     except mysql.connector.Error as err:
         print(f"Error connecting to database: {err}")
         raise HTTPException(status_code=500, detail="Database connection failed")
+
+@app.get("/api/clients", response_model=List[ClientResponse])
+def get_clients():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Fetch basic client info
+        cursor.execute("SELECT * FROM clients ORDER BY created_at DESC")
+        clients_db = cursor.fetchall()
+        
+        results = []
+        for c in clients_db:
+            client_id = c['id']
+            
+            # Simple AUM Calculation (Can be optimized to single SQL later)
+            # 1. Cash Balance
+            cursor.execute("SELECT SUM(cash_balance) as cash FROM accounts WHERE client_id = %s", (client_id,))
+            cash_row = cursor.fetchone()
+            total_cash = float(cash_row['cash'] or 0)
+            
+            # 2. Holdings Value (Need latest NAV for funds/products)
+            # Fetch all holdings for this client's accounts
+            cursor.execute("""
+                SELECT h.shares, h.fund_id, h.external_product_id, h.external_nav,
+                       f.nav as fund_nav, ep.latest_nav as ep_nav
+                FROM holdings h
+                JOIN accounts a ON h.account_id = a.id
+                LEFT JOIN funds f ON h.fund_id = f.id
+                LEFT JOIN external_products ep ON h.external_product_id = ep.id
+                WHERE a.client_id = %s
+            """, (client_id,))
+            holdings = cursor.fetchall()
+            
+            total_invested = 0
+            for h in holdings:
+                shares = float(h['shares'])
+                nav = 0
+                if h['external_product_id']:
+                    nav = float(h['external_nav'] if h['external_nav'] is not None else (h['ep_nav'] or 1.0))
+                elif h['fund_id']:
+                    nav = float(h['fund_nav'] or 1.0)
+                total_invested += shares * nav
+                
+            total_aum = total_cash + total_invested
+            
+            tags = []
+            if c['tags']:
+                try:
+                    tags = json.loads(c['tags'])
+                except:
+                    pass
+
+            results.append({
+                "id": c['id'],
+                "name": c['name'],
+                "phone": c['phone'] or '',
+                "gender": c['gender'] or 'M',
+                "status": c['status'] or 'POTENTIAL',
+                "riskLevel": c['risk_level'] or 'C1-保守型',
+                "lastContactDate": c['last_contact_date'],
+                "tags": tags,
+                "totalAum": total_aum
+            })
+            
+        return results
+    except mysql.connector.Error as err:
+        print(f"Error fetching clients: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/api/clients", response_model=Dict[str, str])
+def create_client(client: ClientCreate):
+    import uuid
+    new_id = str(uuid.uuid4())
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        tags_json = json.dumps([t.dict() for t in client.tags]) if client.tags else None
+        
+        query = """
+            INSERT INTO clients (id, name, phone, gender, status, risk_level, last_contact_date, tags)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (
+            new_id, 
+            client.name, 
+            client.phone, 
+            client.gender, 
+            client.status, 
+            client.riskLevel, 
+            client.lastContactDate, 
+            tags_json
+        ))
+        conn.commit()
+        return {"id": new_id, "message": "Client created successfully"}
+    except mysql.connector.Error as err:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.get("/api/funds", response_model=List[Fund])
 def get_funds(

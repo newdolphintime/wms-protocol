@@ -7,7 +7,10 @@
 > **Version History**:
 > - v20260108.v1: 新增 `PUT /api/funds/{id}` 配置流动性
 > - v20260108.v2: `PUT /api/holdings/{id}` 支持清除规则
+> - v20260108.v1: 新增 `PUT /api/funds/{id}` 配置流动性
+> - v20260108.v2: `PUT /api/holdings/{id}` 支持清除规则
 > - v20260111.v1: 完善外部产品 (External Products) 与现金流 (Cash Flows) 接口定义
+> - v20260112.v1: 新增客户管理 (Clients) 接口及现金流 Client ID 过滤
 
 ### 1.1 获取基金列表
 *   **Method**: `GET`
@@ -161,12 +164,53 @@
 *   **响应**: `{"id": "uuid", "message": "Product created successfully"}`
 
 ---
+ 
+ ## 4. 客户管理 (Clients)
+ 
+ ### 4.1 获取客户列表
+ *   **Method**: `GET`
+ *   **URL**: `/api/clients`
+ *   **描述**: 获取所有客户列表。包含客户基础信息及计算出的总资产规模 (Total AUM)。
+ *   **响应**: `List[ClientResponse]`
+    ```json
+     [
+       {
+         "id": "client-uuid",
+         "name": "王先生",
+         "phone": "13800138000",
+         "gender": "M",
+         "status": "VIP",
+         "riskLevel": "C3-平衡型",
+         "tags": [{"id": "t1", "label": "高净值", "color": "blue"}],
+         "totalAum": 5000000 
+       }
+     ]
+     ```
+ 
+ ### 4.2 创建新客户
+ *   **Method**: `POST`
+ *   **URL**: `/api/clients`
+ *   **请求体**: `ClientCreate`
+     ```json
+     {
+       "name": "李女士",
+       "phone": "13912345678",
+       "gender": "F",
+       "status": "POTENTIAL",
+       "riskLevel": "C2-稳健型",
+       "tags": []
+     }
+     ```
+ *   **响应**: `{"id": "uuid", "message": "Client created successfully"}`
+ 
+ ---
+ 
+ ## 5. 现金流管理 (Cash Flows)
 
-## 4. 现金流管理 (Cash Flows)
-
-### 4.1 获取现金流列表
+### 5.1 获取现金流列表
 *   **Method**: `GET`
 *   **URL**: `/api/cash-flows`
+*   **参数**: `client_id` (Query, Optional) - 筛选特定客户的现金流
 *   **响应**: `List[CashFlowItem]`
     ```json
     [
@@ -175,14 +219,16 @@
         "date": "2025-01-15",
         "amount": 50000,
         "type": "INFLOW", // INFLOW or OUTFLOW
+        "type": "INFLOW", // INFLOW or OUTFLOW
         "description": "分红收入",
         "recurringRuleId": "rule-uuid", // 如果关联了周期规则
-        "relatedHoldingKey": "fund-uuid" // 关联的持仓/基金
+        "relatedHoldingKey": "fund-uuid", // 关联的持仓/基金
+        "clientId": "client-uuid" // [v20260112] 所属客户
       }
     ]
     ```
 
-### 4.2 批量添加现金流
+### 5.2 批量添加现金流
 *   **Method**: `POST`
 *   **URL**: `/api/cash-flows/batch`
 *   **描述**: 批量录入现金流，常用于生成周期性计划（如“每月定投”）。
@@ -201,7 +247,7 @@
     ```
 *   **响应**: `{"message": "Batch save successful", "count": 12}`
 
-### 4.3 删除现金流
+### 5.3 删除现金流
 *   **Method**: `DELETE`
 *   **URL**: `/api/cash-flows/{flow_id}`
 

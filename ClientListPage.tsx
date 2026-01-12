@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
     Search,
     Filter,
@@ -16,7 +17,7 @@ import {
     X,
     Check
 } from 'lucide-react';
-import { Client, ClientStatus, MOCK_CLIENTS, getClients, ClientTag } from './services/clientService';
+import { Client, ClientStatus, getClients, ClientTag } from './services/clientService';
 
 // --- Components ---
 
@@ -202,16 +203,16 @@ const ClientListPage: React.FC = () => {
             </div>
 
             {/* Content Table/Grid */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
                 <table className="w-full">
                     <thead className="bg-gray-50/50">
                         <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            <th className="px-6 py-4">客户信息</th>
+                            <th className="px-6 py-4 first:rounded-tl-2xl">客户信息</th>
                             <th className="px-6 py-4">客户画像 (标签)</th>
                             <th className="px-6 py-4 text-right">资产规模 (AUM)</th>
                             <th className="px-6 py-4">风险偏好</th>
                             <th className="px-6 py-4">状态</th>
-                            <th className="px-6 py-4 text-right">操作</th>
+                            <th className="px-6 py-4 text-right last:rounded-tr-2xl">操作</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -225,7 +226,9 @@ const ClientListPage: React.FC = () => {
                                         </div>
                                         <div>
                                             <div className="font-bold text-gray-900 flex items-center gap-2">
-                                                {client.name}
+                                                <Link to={`/portfolio/${client.id}`} className="hover:text-indigo-600 hover:underline transition-all">
+                                                    {client.name}
+                                                </Link>
                                                 <span className={`w-1.5 h-1.5 rounded-full ${client.gender === 'F' ? 'bg-pink-400' : 'bg-blue-400'}`}></span>
                                             </div>
                                             <div className="text-xs text-gray-400 mt-0.5 font-mono flex items-center gap-1">
