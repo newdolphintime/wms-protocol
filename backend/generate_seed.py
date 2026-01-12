@@ -32,9 +32,12 @@ def generate_seed_script():
         'funds',
         'fund_nav_history', 
         'fund_patch_rules',
+        'external_products',
         'clients',
         'accounts',
-        'holdings'
+        'holdings',
+        'recurring_rules',
+        'cash_flows'
     ]
 
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:

@@ -12,10 +12,16 @@
 | `id` | VARCHAR(36) | 主键 (UUID) | |
 | `code` | VARCHAR(10) | 基金代码 | 如 510300 |
 | `name` | VARCHAR(100) | 基金名称 | |
+| `manager` | VARCHAR(50) | 基金经理 | |
 | `type` | VARCHAR(20) | 基金类型 | 股票型, 债券型等 |
 | `nav` | DECIMAL(10, 4) | 最新净值 | |
+| `day_change` | DECIMAL(5, 2) | 日涨跌幅 | % |
+| `ytd_return` | DECIMAL(5, 2) | 年初至今收益 | % |
+| `risk_level` | INT | 风险等级 | 1-5 |
+| `inception_date` | DATE | 成立日期 | |
+| `description` | TEXT | 基金描述 | |
 | `created_at` | TIMESTAMP | 创建时间 | |
-| **流动性规则 (v20260108.v1)** | | | |
+| **流动性规则** | | | |
 | `liquidity_rule_type` | ENUM | 规则类型 | DAILY, MONTHLY, FIXED_TERM, CUSTOM |
 | `settlement_days` | INT | 到账天数 | T+N (默认1) |
 | `open_day` | INT | 开放日 | 仅 MONTHLY 类型有效 (1-31) |
@@ -30,12 +36,26 @@
 | 字段名 | 类型 | 描述 | 备注 |
 | :--- | :--- | :--- | :--- |
 | `id` | VARCHAR(36) | 主键 (UUID) | |
+| `product_code` | VARCHAR(50) | 产品代码 | |
 | `product_name` | VARCHAR(200) | 产品名称 | |
 | `product_type` | VARCHAR(50) | 产品类型 | 信托, 私募等 |
+| `issuer` | VARCHAR(200) | 发行机构 | |
 | `status` | ENUM | 状态 | 募集中, 运行中, 已到期等 |
 | `latest_nav` | DECIMAL(10, 4) | 最新净值 | |
+| `nav_date` | DATE | 净值日期 | |
+| `is_active` | BOOLEAN | 是否生效 | |
+| **流动性规则** | | | |
 | `liquidity_rule_type` | ENUM | 规则类型 | 默认为 MONTHLY |
+| `settlement_days` | INT | 到账天数 | T+N |
+| `open_day` | INT | 开放日 | 1-31 |
+| `has_lockup` | BOOLEAN | 是否有锁定期 | |
+| `lockup_days` | INT | 锁定期天数 | |
+| `maturity_date` | DATE | 到期日 | |
+| `liquidity_notes` | TEXT | 备注 | |
 | `advanced_config` | JSON | 高级配置 | 预留扩字段 |
+| `description` | TEXT | 描述 | |
+| `created_at` | TIMESTAMP | 创建时间 | |
+| `updated_at` | TIMESTAMP | 更新时间 | |
 
 ### 1.3 holdings (客户持仓)
 连接账户与资产（基金或外部产品）的关联表。
@@ -94,12 +114,15 @@
 | `tags` | JSON | 客户标签 ([{id, label, color}]) |
 
 ### 3.2 accounts (账户)
-| 字段名 | 类型 | 描述 |
-| :--- | :--- | :--- |
-| `id` | VARCHAR(36) | 账户ID |
-| `client_id` | VARCHAR(36) | 所属客户 |
+| 字段名 | 类型 | 描述 | 备注 |
+| :--- | :--- | :--- | :--- |
+| `id` | VARCHAR(36) | 账户ID | |
+| `client_id` | VARCHAR(36) | 所属客户 | 外键 |
+| `name` | VARCHAR(100) | 账户名称 | |
 | `type` | VARCHAR(50) | 账户类型 | PERSONAL, FAMILY_TRUST |
+| `description` | VARCHAR(255) | 描述 | |
 | `cash_balance` | DECIMAL | 现金余额 | |
+| `created_at` | TIMESTAMP | 创建时间 | |
 
 ---
 
@@ -109,9 +132,13 @@
 | 字段名 | 类型 | 描述 | 备注 |
 | :--- | :--- | :--- | :--- |
 | `id` | VARCHAR(50) | 主键 | |
+| `date` | DATE | 日期 | |
 | `amount` | DECIMAL | 金额 | |
+| `description` | VARCHAR(255) | 说明 | |
 | `type` | VARCHAR(10) | 类型 | INFLOW / OUTFLOW |
 | `recurring_rule_id` | VARCHAR(50) | 关联规则ID | 可空 |
+| `related_holding_key` | VARCHAR(100) | 关联资产Key | 用于赎回/分红关联 |
+| `created_at` | TIMESTAMP | 创建时间 | |
 
 ### 4.2 recurring_rules (重复规则)
 | 字段名 | 类型 | 描述 | 备注 |

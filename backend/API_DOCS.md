@@ -131,6 +131,26 @@
 *   **Method**: `DELETE`
 *   **URL**: `/api/holdings/{holding_id}`
 
+### 2.6 创建账户
+*   **Method**: `POST`
+*   **URL**: `/api/accounts`
+*   **描述**: 为客户创建一个新的子账户（如家族信托账户）。
+*   **请求体**: `AccountCreate`
+    ```json
+    {
+      "clientId": "client-uuid",
+      "name": "张氏家族信托一号",
+      "type": "家族信托账户", // 个人自有账户, 家族信托账户
+      "cashBalance": 1000000
+    }
+    ```
+*   **响应**: `{"id": "acc-uuid", "message": "Account created"}`
+
+### 2.7 删除账户
+*   **Method**: `DELETE`
+*   **URL**: `/api/accounts/{account_id}`
+*   **描述**: 删除账户及其下属所有持仓。
+
 ---
 
 ## 3. 外部产品库 (External Products)
@@ -210,7 +230,7 @@
 ### 5.1 获取现金流列表
 *   **Method**: `GET`
 *   **URL**: `/api/cash-flows`
-*   **参数**: `client_id` (Query, Optional) - 筛选特定客户的现金流
+*   **参数**: 无
 *   **响应**: `List[CashFlowItem]`
     ```json
     [
@@ -222,8 +242,7 @@
         "type": "INFLOW", // INFLOW or OUTFLOW
         "description": "分红收入",
         "recurringRuleId": "rule-uuid", // 如果关联了周期规则
-        "relatedHoldingKey": "fund-uuid", // 关联的持仓/基金
-        "clientId": "client-uuid" // [v20260112] 所属客户
+        "relatedHoldingKey": "fund-uuid" // 关联的持仓/基金
       }
     ]
     ```

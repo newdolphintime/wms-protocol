@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS fund_patch_rules (
 CREATE TABLE IF NOT EXISTS clients (
     id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
     name VARCHAR(100) NOT NULL COMMENT 'Client Name',
+    phone VARCHAR(20) DEFAULT NULL COMMENT 'Phone Number',
+    gender ENUM('M', 'F') DEFAULT 'M' COMMENT 'Gender',
+    status ENUM('ACTIVE', 'POTENTIAL', 'INACTIVE', 'VIP') DEFAULT 'POTENTIAL' COMMENT 'Client Status',
+    risk_level VARCHAR(50) DEFAULT 'C1-保守型' COMMENT 'Risk Tolerance Level',
+    last_contact_date DATE DEFAULT NULL COMMENT 'Last Contact Date',
+    tags JSON DEFAULT NULL COMMENT 'Client Tags (JSON)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -103,13 +109,6 @@ CREATE TABLE IF NOT EXISTS holdings (
     -- Link to External Products (Nullable)
     external_product_id VARCHAR(36) NULL COMMENT 'Reference to external_products table',
 
-    -- External Asset Fields (Legacy/Direct Input)
-    is_external BOOLEAN DEFAULT FALSE,
-    external_name VARCHAR(100),
-    external_type VARCHAR(50) COMMENT 'FundType Enum',
-    external_nav DECIMAL(10, 4),
-    external_nav_date DATE,
-    
     -- Position Data
     shares DECIMAL(15, 2) NOT NULL DEFAULT 0,
     avg_cost DECIMAL(10, 4) DEFAULT 0,

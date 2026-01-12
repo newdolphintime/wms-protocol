@@ -29,16 +29,19 @@ cd backend
 pip install -r requirements.txt
 ```
 
-## 步骤 3: 数据库初始化 (首次部署或重置)
-**重要**: 此步骤会重置数据库。如果是更新部署且需保留数据，请跳过数据库创建和数据填充。
+## 步骤 3: 数据库初始化 (首次部署或全量重置)
+**⚠️ 警告**: 此步骤会**删除所有现有数据**并完全重置数据库。
+*   如果是**首次部署**，请按顺序执行。
+*   如果是**版本更新**且需保留数据，请直接跳至 **步骤 3.5**。
 
-1. **重建数据库 (使用 utf8mb4 支持中文)**:
-   ```bash
-   mysql -u root -p -e "DROP DATABASE IF EXISTS wms; CREATE DATABASE wms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-   ```
+1.  **重建数据库 & 导入表结构**:
+    ```bash
+    # 1. 删除并重新创建数据库 (确保使用 utf8mb4)
+    mysql -u root -p -e "DROP DATABASE IF EXISTS wms; CREATE DATABASE wms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-   mysql -u root -p wms < schema.sql
-   ```
+    # 2. 导入表结构
+    mysql -u root -p wms < schema.sql
+    ```
 
 ## 步骤 3.5: 数据库升级 (仅限更新部署)
 **注意**: 如果你已经在运行旧版本且**需要保留数据**，请不要重新运行步骤 3，而是执行以下迁移脚本：

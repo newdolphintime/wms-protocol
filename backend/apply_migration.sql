@@ -38,6 +38,26 @@ BEGIN
     IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'funds' AND COLUMN_NAME = 'liquidity_notes') THEN
         ALTER TABLE funds ADD COLUMN liquidity_notes TEXT NULL COMMENT 'Additional notes for liquidity';
     END IF;
+
+    -- New columns found in 2026-01-12 update
+    IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'funds' AND COLUMN_NAME = 'manager') THEN
+        ALTER TABLE funds ADD COLUMN manager VARCHAR(50) COMMENT 'Fund Manager Name';
+    END IF;
+    IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'funds' AND COLUMN_NAME = 'day_change') THEN
+        ALTER TABLE funds ADD COLUMN day_change DECIMAL(5, 2) COMMENT 'Daily Change Percentage';
+    END IF;
+    IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'funds' AND COLUMN_NAME = 'ytd_return') THEN
+        ALTER TABLE funds ADD COLUMN ytd_return DECIMAL(5, 2) COMMENT 'Year-to-Date Return Percentage';
+    END IF;
+    IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'funds' AND COLUMN_NAME = 'risk_level') THEN
+        ALTER TABLE funds ADD COLUMN risk_level INT COMMENT 'Risk Rating (1-5)';
+    END IF;
+    IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'funds' AND COLUMN_NAME = 'inception_date') THEN
+        ALTER TABLE funds ADD COLUMN inception_date DATE COMMENT 'Fund Inception Date';
+    END IF;
+    IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'funds' AND COLUMN_NAME = 'description') THEN
+        ALTER TABLE funds ADD COLUMN description TEXT COMMENT 'Fund Description and Investment Scope';
+    END IF;
 END $$
 DELIMITER ;
 
@@ -92,5 +112,42 @@ DELIMITER ;
 CALL upgrade_holdings_table();
 DROP PROCEDURE upgrade_holdings_table;
 
--- 4. Set Default Values for Funds (Optional, ensuring consistent state)
+-- 4. Upgrade accounts table
+DROP PROCEDURE IF EXISTS upgrade_accounts_table;
+DELIMITER $$
+CREATE PROCEDURE upgrade_accounts_table()
+BEGIN
+    IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'accounts' AND COLUMN_NAME = 'description') THEN
+        ALTER TABLE accounts ADD COLUMN description VARCHAR(255);
+    END IF;
+    -- Check if 'name' exists if it wasn't in original schema (assuming it might be new or checking just in case)
+    IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'accounts' AND COLUMN_NAME = 'name') THEN
+        ALTER TABLE accounts ADD COLUMN name VARCHAR(100) NOT NULL DEFAULT 'New Account';
+    END IF;
+END $$
+DELIMITER ;
+CALL upgrade_accounts_table();
+DROP PROCEDURE upgrade_accounts_table;
+
+-- 5. Create recurring_rules and cash_flows if not exist
+CREATE TABLE IF NOT EXISTS recurring_rules (
+    id VARCHAR(50) PRIMARY KEY,
+    frequency VARCHAR(20) NOT NULL COMMENT 'Enum: MONTHLY, QUARTERLY, YEARLY',
+    count INT NOT NULL COMMENT 'Number of occurrences',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS cash_flows (
+    id VARCHAR(50) PRIMARY KEY,
+    date DATE NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL,
+    description VARCHAR(255),
+    type VARCHAR(10) NOT NULL COMMENT 'INFLOW or OUTFLOW',
+    recurring_rule_id VARCHAR(50) NULL,
+    related_holding_key VARCHAR(100) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (recurring_rule_id) REFERENCES recurring_rules(id) ON DELETE SET NULL
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6. Set Default Values for Funds (Optional, ensuring consistent state)
 UPDATE funds SET liquidity_rule_type = 'DAILY' WHERE liquidity_rule_type IS NULL;

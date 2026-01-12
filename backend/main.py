@@ -78,6 +78,20 @@ def startup_db_migration():
         add_col("clients", "risk_level VARCHAR(50) NULL", "risk_level")
         add_col("clients", "last_contact_date DATE NULL", "last_contact_date")
         add_col("clients", "tags JSON NULL", "tags")
+
+        # External Products Migration
+        add_col("external_products", "liquidity_rule_type ENUM('DAILY', 'MONTHLY', 'FIXED_TERM', 'CUSTOM') DEFAULT 'MONTHLY'", "liquidity_rule_type")
+        add_col("external_products", "settlement_days INT DEFAULT 10", "settlement_days")
+        add_col("external_products", "open_day INT NULL", "open_day")
+        add_col("external_products", "has_lockup BOOLEAN DEFAULT FALSE", "has_lockup")
+        add_col("external_products", "lockup_days INT NULL", "lockup_days")
+        add_col("external_products", "maturity_date DATE NULL", "maturity_date")
+        add_col("external_products", "liquidity_notes TEXT NULL", "liquidity_notes")
+        add_col("external_products", "advanced_config JSON NULL", "advanced_config")
+
+        # Holdings Migration
+        add_col("holdings", "purchase_date DATE NULL COMMENT 'Purchase Date'", "purchase_date")
+        add_col("holdings", "redemption_config JSON NULL", "redemption_config")
         
         # Cash Flows Table Client ID
         conn.commit()
@@ -256,6 +270,12 @@ class ClientResponse(ClientCreate):
     totalAum: float = 0
     model_config = ConfigDict(from_attributes=True)
 
+class AccountCreate(BaseModel):
+    clientId: str
+    name: str
+    type: str # PERSONAL, FAMILY_TRUST, 个人自有账户, 家族信托账户
+    cashBalance: float = 0.0
+
 def get_db_connection():
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -286,7 +306,7 @@ def get_clients():
             # 2. Holdings Value (Need latest NAV for funds/products)
             # Fetch all holdings for this client's accounts
             cursor.execute("""
-                SELECT h.shares, h.fund_id, h.external_product_id, h.external_nav,
+                SELECT h.shares, h.fund_id, h.external_product_id,
                        f.nav as fund_nav, ep.latest_nav as ep_nav
                 FROM holdings h
                 JOIN accounts a ON h.account_id = a.id
@@ -301,9 +321,10 @@ def get_clients():
                 shares = float(h['shares'])
                 nav = 0
                 if h['external_product_id']:
-                    nav = float(h['external_nav'] if h['external_nav'] is not None else (h['ep_nav'] or 1.0))
+                    nav = float(h['ep_nav'] or 1.0)
                 elif h['fund_id']:
                     nav = float(h['fund_nav'] or 1.0)
+                
                 total_invested += shares * nav
                 
             total_aum = total_cash + total_invested
@@ -947,11 +968,13 @@ def get_portfolio(client_id: str):
         
         accounts_list = []
         for acc in accounts_db:
-            # 3. Get Holdings for each account
+            # 3. Get Holdings for each account (Join with external_products)
             cursor.execute("""
-                SELECT h.*, f.name as fund_name, f.type as fund_type
+                SELECT h.*, f.name as fund_name, f.type as fund_type,
+                       ep.product_name as ep_name, ep.product_type as ep_type, ep.latest_nav as ep_nav
                 FROM holdings h
                 LEFT JOIN funds f ON h.fund_id = f.id
+                LEFT JOIN external_products ep ON h.external_product_id = ep.id
                 WHERE h.account_id = %s
             """, (acc['id'],))
             holdings_db = cursor.fetchall()
@@ -966,15 +989,24 @@ def get_portfolio(client_id: str):
                     except:
                         pass
                 
+                # Unified fields for mixed asset types
+                is_ext = bool(h['external_product_id'])
+                ext_name = h['ep_name'] if h['external_product_id'] else None
+                ext_type = h['ep_type'] if h['external_product_id'] else None
+                
+                # NAV Logic: ep_nav
+                nav_val = h['ep_nav'] if h['external_product_id'] else None
+                
                 holdings_list.append({
                     "id": h['id'],
                     "accountId": h['account_id'],
                     "fundId": h['fund_id'],
-                    "isExternal": bool(h['is_external']),
-                    "externalName": h['external_name'],
-                    "externalType": h['external_type'],
-                    "externalNav": float(h['external_nav']) if h['external_nav'] is not None else None,
-                    "externalNavDate": str(h['external_nav_date']) if h['external_nav_date'] else None,
+                    "externalProductId": h['external_product_id'],
+                    "isExternal": is_ext,
+                    "externalName": ext_name,
+                    "externalType": ext_type,
+                    "externalNav": float(nav_val) if nav_val is not None else None,
+                    "externalNavDate": str(h['ep_nav_date']) if h.get('ep_nav_date') else None,
                     "shares": float(h['shares']),
                     "avgCost": float(h['avg_cost']),
                     "redemptionRule": redemption_rule
@@ -994,12 +1026,46 @@ def get_portfolio(client_id: str):
             "accounts": accounts_list
         }
         
-    except mysql.connector.Error as err:
-        print(f"Error executing query: {err}")
-        raise HTTPException(status_code=500, detail="Database query failed")
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/api/accounts", response_model=Dict[str, str])
+def create_account(account: AccountCreate):
+    import uuid
+    new_id = f"acc-{uuid.uuid4().hex[:8]}"
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO accounts (id, client_id, name, type, cash_balance)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (new_id, account.clientId, account.name, account.type, account.cashBalance))
+        conn.commit()
+        return {"id": new_id, "message": "Account created"}
+    except mysql.connector.Error as err:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.delete("/api/accounts/{account_id}")
+def delete_account(account_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM accounts WHERE id = %s", (account_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Account not found")
+        conn.commit()
+        return {"message": "Account deleted"}
+    except mysql.connector.Error as err:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
     finally:
         cursor.close()
         conn.close()
@@ -1008,6 +1074,7 @@ class HoldingCreate(BaseModel):
     id: str
     accountId: str
     fundId: Optional[str] = None
+    externalProductId: Optional[str] = None
     isExternal: bool = False
     externalName: Optional[str] = None
     externalType: Optional[str] = None
@@ -1029,19 +1096,14 @@ def add_holding(holding: HoldingCreate):
             
         query = """
         INSERT INTO holdings (
-            id, account_id, fund_id, is_external, external_name, external_type, 
-            external_nav, external_nav_date, shares, avg_cost, redemption_config
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            id, account_id, fund_id, external_product_id, shares, avg_cost, redemption_config
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
         cursor.execute(query, (
             holding.id,
             holding.accountId,
             holding.fundId,
-            holding.isExternal,
-            holding.externalName,
-            holding.externalType,
-            holding.externalNav,
-            holding.externalNavDate,
+            holding.externalProductId,
             holding.shares,
             holding.avgCost,
             config_json

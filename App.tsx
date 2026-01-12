@@ -55,7 +55,7 @@ import { MOCK_FUNDS, MOCK_PORTFOLIO, generateChartData, generateFundHistory, get
 import { analyzeFunds } from './services/geminiService';
 import ComparisonChart from './components/ComparisonChart';
 import ProposalGenerator from './components/ProposalGenerator';
-import { Fund, AnalysisState, FundType, PatchRule, Account, AccountType, LiquidityTier, CashFlow, ClientPortfolio, Holding, RedemptionRule, Frequency } from './types';
+import { Fund, AnalysisState, FundType, PatchRule, Account, AccountType, LiquidityTier, CashFlow, ClientPortfolio, Holding, RedemptionRule, Frequency, ExternalProduct } from './types';
 import ReactMarkdown from 'react-markdown';
 import LongTermForecastPage from './LongTermForecastPage';
 
@@ -347,37 +347,83 @@ const SingleFundPerformanceCard: React.FC<{ fund: Fund; patchRules: PatchRule[];
 const AddAssetModal: React.FC<{ isOpen: boolean; onClose: () => void; accounts: Account[]; initialAccountId?: string; onAdd: (accountId: string, holding: Holding) => void; }> = (props) => {
   const { isOpen, onClose, accounts, initialAccountId, onAdd } = props;
   const [accountId, setAccountId] = useState(accounts[0]?.id || '');
-  const [name, setName] = useState('');
-  const [type, setType] = useState<FundType>(FundType.BROAD_MARKET);
+  const [externalProducts, setExternalProducts] = useState<ExternalProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState('');
   const [shares, setShares] = useState('');
-  const [nav, setNav] = useState('');
-  const [navDate, setNavDate] = useState(new Date().toISOString().split('T')[0]);
   const [avgCost, setAvgCost] = useState('');
-  const [isPeriodic, setIsPeriodic] = useState(false);
-  const [openDay, setOpenDay] = useState(15);
-  const [settlementDays, setSettlementDays] = useState(10);
+
+  // Fetch Products
+  useEffect(() => {
+    if (isOpen) {
+      fetch('/api/external-products').then(res => res.json()).then(data => setExternalProducts(data)).catch(console.error);
+    }
+  }, [isOpen]);
+
   useEffect(() => { if (isOpen && initialAccountId) setAccountId(initialAccountId); else if (isOpen && !initialAccountId && accounts.length > 0) setAccountId(accounts[0].id); }, [isOpen, initialAccountId, accounts]);
+
+  const selectedProduct = useMemo(() => externalProducts.find(p => p.id === selectedProductId), [selectedProductId, externalProducts]);
+
   if (!isOpen) return null;
+
   const handleSubmit = () => {
-    if (accountId && name && shares && nav) {
-      let redemptionRule: RedemptionRule | undefined = undefined;
-      if (isPeriodic) { redemptionRule = { ruleType: 'MONTHLY', openDay: openDay, settlementDays: settlementDays }; }
-      onAdd(accountId, { id: 'temp', isExternal: true, externalName: name, externalType: type, externalNav: Number(nav), externalNavDate: navDate, shares: Number(shares), avgCost: Number(avgCost) || Number(nav), redemptionRule });
-      onClose(); setName(''); setShares(''); setNav(''); setAvgCost(''); setIsPeriodic(false);
+    if (accountId && selectedProductId && shares) {
+      onAdd(accountId, {
+        id: 'temp',
+        isExternal: true,
+        externalProductId: selectedProductId,
+        // Optimistic UI fields
+        externalName: selectedProduct?.productName,
+        externalType: selectedProduct?.productType as FundType, // Assuming type match or string
+        externalNav: selectedProduct?.latestNav,
+        externalNavDate: selectedProduct?.navDate,
+        shares: Number(shares),
+        avgCost: Number(avgCost) || Number(selectedProduct?.latestNav || 0)
+      } as any);
+      onClose();
+      setShares('');
+      setAvgCost('');
+      setSelectedProductId('');
     }
   };
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6"> <h3 className="text-lg font-bold text-gray-900">录入外部资产</h3> <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button> </div>
+        <div className="flex justify-between items-center mb-6"> <h3 className="text-lg font-bold text-gray-900">配置外部资产 (按产品库)</h3> <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button> </div>
         <div className="space-y-4">
-          <div> <label className="block text-xs font-medium text-gray-700 mb-1">所属账户</label> <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-full text-sm border-gray-300 rounded-md bg-gray-50"> {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))} </select> </div>
-          <div> <label className="block text-xs font-medium text-gray-700 mb-1">产品名称</label> <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder="例如: 某某私募一期" /> </div>
-          <div> <label className="block text-xs font-medium text-gray-700 mb-1">产品类型</label> <select value={type} onChange={e => setType(e.target.value as FundType)} className="w-full text-sm border-gray-300 rounded-md"> {Object.values(FundType).map(t => <option key={t} value={t}>{t}</option>)} </select> </div>
-          <div className="grid grid-cols-2 gap-4"> <div> <label className="block text-xs font-medium text-gray-700 mb-1">持有份额</label> <input type="number" value={shares} onChange={e => setShares(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" /> </div> <div> <label className="block text-xs font-medium text-gray-700 mb-1">持仓成本(元)</label> <input type="number" value={avgCost} onChange={e => setAvgCost(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder="选填" /> </div> </div>
-          <div className="grid grid-cols-2 gap-4"> <div> <label className="block text-xs font-medium text-gray-700 mb-1">最新净值</label> <input type="number" value={nav} onChange={e => setNav(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" /> </div> <div> <label className="block text-xs font-medium text-gray-700 mb-1">净值日期</label> <input type="date" value={navDate} onChange={e => setNavDate(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" /> </div> </div>
-          <div className="border-t border-gray-100 pt-4 mt-2"> <div className="flex items-center gap-2 mb-3"> <input type="checkbox" id="isPeriodic" checked={isPeriodic} onChange={e => setIsPeriodic(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" /> <label htmlFor="isPeriodic" className="text-sm font-medium text-gray-700">配置定期开放规则 (如信托)</label> </div> {isPeriodic && (<div className="bg-gray-50 p-3 rounded-lg space-y-3"> <div className="flex items-center gap-2"> <span className="text-xs text-gray-600">每月</span> <input type="number" min={1} max={31} value={openDay} onChange={e => setOpenDay(parseInt(e.target.value))} className="w-16 text-sm border-gray-300 rounded-md" /> <span className="text-xs text-gray-600">日为开放日</span> </div> <div className="flex items-center gap-2"> <span className="text-xs text-gray-600">赎回需</span> <input type="number" min={0} value={settlementDays} onChange={e => setSettlementDays(parseInt(e.target.value))} className="w-16 text-sm border-gray-300 rounded-md" /> <span className="text-xs text-gray-600">天到账 (T+N)</span> </div> </div>)} </div>
-          <button onClick={handleSubmit} disabled={!name || !shares || !nav} className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium">确认录入</button>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">所属账户</label>
+            <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-full text-sm border-gray-300 rounded-md bg-gray-50"> {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))} </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">选择产品</label>
+            <select value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)} className="w-full text-sm border-gray-300 rounded-md">
+              <option value="">请选择外部理财产品...</option>
+              {externalProducts.map(p => (
+                <option key={p.id} value={p.id}>{p.productName} ({p.productType}) - 最新净值: {p.latestNav}</option>
+              ))}
+            </select>
+            <div className="text-xs text-gray-500 mt-1 flex justify-end">
+              {/* Link to create new product would go here if we had routing to it, or just use separate page */}
+              <span>如需新产品, 请先在外部产品库录入</span>
+            </div>
+          </div>
+
+          {selectedProduct && (
+            <div className="bg-gray-50 p-3 rounded text-xs space-y-1 border border-gray-100">
+              <div className="flex justify-between"><span>发行机构:</span> <span className="font-medium">{selectedProduct.issuer || '-'}</span></div>
+              <div className="flex justify-between"><span>流动性规则:</span> <span className="font-medium text-indigo-600">{selectedProduct.liquidityRuleType}</span></div>
+              <div className="flex justify-between"><span>最新净值:</span> <span className="font-mono">{selectedProduct.latestNav} ({selectedProduct.navDate})</span></div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div> <label className="block text-xs font-medium text-gray-700 mb-1">持有份额</label> <input type="number" value={shares} onChange={e => setShares(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder="0.00" /> </div>
+            <div> <label className="block text-xs font-medium text-gray-700 mb-1">持仓成本(元/份)</label> <input type="number" value={avgCost} onChange={e => setAvgCost(e.target.value)} className="w-full text-sm border-gray-300 rounded-md" placeholder={selectedProduct ? `默认: ${selectedProduct.latestNav}` : "选填"} /> </div>
+          </div>
+
+          <button onClick={handleSubmit} disabled={!selectedProductId || !shares} className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium">确认配置</button>
         </div>
       </div>
     </div>
@@ -702,8 +748,28 @@ const FundDetailPage: React.FC<{ patchRules: PatchRule[], onAddPatchRule: (r: Pa
     </div>
   );
 };
-const PortfolioPage: React.FC<{ portfolio: ClientPortfolio, patchRules: PatchRule[], onAddExternalAsset: (accountId: string, holding: Holding) => void }> = ({ portfolio, patchRules, onAddExternalAsset }) => {
+const PortfolioPage: React.FC<{
+  portfolio: ClientPortfolio,
+  patchRules: PatchRule[],
+  onAddExternalAsset: (accountId: string, holding: Holding) => void,
+  onRefresh: () => void
+}> = ({ portfolio, patchRules, onAddExternalAsset, onRefresh }) => {
   const [metric, setMetric] = useState<'NAV' | 'CHANGE'>('NAV'); const [chartView, setChartView] = useState<'OVERLAY' | 'GRID'>('OVERLAY'); const [selectedRange, setSelectedRange] = useState<number | string>(180); const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL'); const [isAddAssetOpen, setIsAddAssetOpen] = useState(false); const [addAssetTargetAccount, setAddAssetTargetAccount] = useState<string | undefined>(undefined);
+  const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+
+  const handleDeleteAccount = (accountId: string, accountName: string) => {
+    if (confirm(`确定要删除账户 "${accountName}" 及其所有持仓吗？此操作无法撤销。`)) {
+      fetch(`/api/accounts/${accountId}`, { method: 'DELETE' })
+        .then(res => {
+          if (!res.ok) throw new Error("Delete failed");
+          onRefresh();
+        })
+        .catch(err => {
+          console.error(err);
+          alert("删除失败");
+        });
+    }
+  };
   const getHoldingValue = (h: Holding) => { if (h.isExternal) return (h.externalNav || 1) * h.shares; const f = MOCK_FUNDS.find(fund => fund.id === h.fundId); return f ? f.nav * h.shares : 0; };
   const getHoldingName = (h: Holding) => { if (h.isExternal) return h.externalName || 'Unknown Asset'; return MOCK_FUNDS.find(f => f.id === h.fundId)?.name || 'Unknown Fund'; };
   const getHoldingType = (h: Holding) => { if (h.isExternal) return h.externalType || FundType.STRATEGY; return MOCK_FUNDS.find(f => f.id === h.fundId)?.type || FundType.STRATEGY; };
@@ -716,9 +782,29 @@ const PortfolioPage: React.FC<{ portfolio: ClientPortfolio, patchRules: PatchRul
   const openAddAsset = (accId?: string) => { setAddAssetTargetAccount(accId); setIsAddAssetOpen(true); };
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"> <div> <h1 className="text-2xl font-bold text-gray-900">持仓分析</h1> <p className="mt-1 text-sm text-gray-500">客户 {portfolio.clientName} 的投资组合总览</p> </div> <div className="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm"> <span className="text-sm text-gray-500 mr-2">总资产</span> <span className="text-2xl font-bold text-indigo-600 font-mono">¥ {totalAssets.toLocaleString()}</span> </div> </div>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div> <h1 className="text-2xl font-bold text-gray-900">持仓分析</h1> <p className="mt-1 text-sm text-gray-500">客户 {portfolio.clientName} 的投资组合总览</p> </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsAddAccountOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> 新建账户
+          </button>
+          <div className="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm"> <span className="text-sm text-gray-500 mr-2">总资产</span> <span className="text-2xl font-bold text-indigo-600 font-mono">¥ {totalAssets.toLocaleString()}</span> </div>
+        </div>
+      </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="border-b border-gray-100 bg-gray-50 px-6 py-3"> <h3 className="font-bold text-gray-800 flex items-center gap-2"> <PieChartIcon className="w-4 h-4 text-indigo-600" /> 总体资产配置 </h3> </div> <div className="p-6 flex flex-col md:flex-row items-center gap-8"> <div className="w-full md:w-1/3 h-[200px]"> <ResponsiveContainer width="100%" height="100%"> <PieChart> <Pie data={totalAllocation} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value"> {totalAllocation.map((entry, index) => (<Cell key={`cell-${index}`} fill={getChartColorForType(entry.name as FundType | 'CASH')} />))} </Pie> <RechartsTooltip formatter={(val: number) => `¥${val.toLocaleString()}`} /> </PieChart> </ResponsiveContainer> </div> <div className="w-full md:w-2/3 grid grid-cols-2 sm:grid-cols-3 gap-4"> {totalAllocation.map((item) => (<div key={item.name} className="flex items-center p-3 rounded-lg bg-gray-50 border border-gray-100"> <div className="w-3 h-3 rounded-full mr-2 shrink-0" style={{ backgroundColor: getChartColorForType(item.name as FundType | 'CASH') }}></div> <div className="flex flex-col min-w-0"> <span className="text-xs text-gray-500 truncate">{item.name === 'CASH' ? '现金余额' : item.name}</span> <span className="text-sm font-bold text-gray-900 truncate">¥{item.value.toLocaleString()}</span> <span className="text-[10px] text-gray-400">{((item.value / totalAssets) * 100).toFixed(1)}%</span> </div> </div>))} </div> </div> </div>
-      <div className="space-y-6"> {portfolio.accounts.map(account => { const accAllocation = getAssetAllocation(account.holdings, account.cashBalance || 0); const accTotal = (account.cashBalance || 0) + account.holdings.reduce((s, h) => s + getHoldingValue(h), 0); return (<div key={account.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center"> <div className="flex items-center gap-3"> <div className="bg-white p-1.5 rounded-md shadow-sm border border-gray-100"> {account.type === AccountType.PERSONAL ? <User className="w-5 h-5 text-indigo-600" /> : <Users className="w-5 h-5 text-indigo-600" />} </div> <div> <h3 className="font-bold text-gray-900">{account.name}</h3> <Badge color={account.type === AccountType.PERSONAL ? 'blue' : 'purple'}>{account.type}</Badge> </div> </div> <div className="flex items-center gap-4"> <div className="text-right"> <div className="text-xs text-gray-500">账户资产</div> <div className="font-mono font-bold text-gray-900">¥ {accTotal.toLocaleString()}</div> </div> <button onClick={() => openAddAsset(account.id)} className="p-2 hover:bg-gray-200 rounded-full text-indigo-600 transition-colors" title="录入外部资产" > <Plus className="w-5 h-5" /> </button> </div> </div> <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6"> <div className="lg:col-span-1 h-[200px] relative"> <h4 className="absolute top-0 left-0 text-xs font-semibold text-gray-500 z-10">配置分布</h4> <ResponsiveContainer width="100%" height="100%"> <PieChart> <Pie data={accAllocation} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value"> {accAllocation.map((entry, idx) => (<Cell key={`cell-${idx}`} fill={getChartColorForType(entry.name as FundType | 'CASH')} />))} </Pie> <RechartsTooltip formatter={(val: number) => `¥${val.toLocaleString()}`} /> <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '10px' }} /> </PieChart> </ResponsiveContainer> </div> <div className="lg:col-span-2 overflow-x-auto"> <table className="min-w-full divide-y divide-gray-200"> <thead> <tr> <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">资产名称</th> <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">类型</th> <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">市值</th> <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">盈亏</th> </tr> </thead> <tbody className="divide-y divide-gray-200"> <tr> <td className="px-3 py-2 text-sm text-gray-900 flex items-center gap-2"> <div className="w-2 h-2 rounded-full bg-cyan-500"></div> 现金余额 </td> <td className="px-3 py-2 text-xs text-gray-500">CASH</td> <td className="px-3 py-2 text-sm text-gray-900 font-mono text-right">¥{(account.cashBalance || 0).toLocaleString()}</td> <td className="px-3 py-2 text-sm text-gray-400 text-right">-</td> </tr> {account.holdings.map((h, idx) => { const val = getHoldingValue(h); const cost = h.avgCost * h.shares; const pl = val - cost; const plPercent = (pl / cost) * 100; return (<tr key={idx}> <td className="px-3 py-2 text-sm text-gray-900"> {getHoldingName(h)} {h.isExternal && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1 rounded">外部</span>} </td> <td className="px-3 py-2 text-xs"><Badge color={getFundTypeColor(getHoldingType(h))}>{getHoldingType(h)}</Badge></td> <td className="px-3 py-2 text-sm text-gray-900 font-mono text-right">¥{val.toLocaleString()}</td> <td className="px-3 py-2 text-sm font-mono text-right"> <span className={pl >= 0 ? 'text-red-600' : 'text-green-600'}> {plPercent.toFixed(2)}% </span> </td> </tr>); })} </tbody> </table> </div> </div> </div>); })} </div>
+      <div className="space-y-6"> {portfolio.accounts.map(account => {
+        const accAllocation = getAssetAllocation(account.holdings, account.cashBalance || 0); const accTotal = (account.cashBalance || 0) + account.holdings.reduce((s, h) => s + getHoldingValue(h), 0); return (<div key={account.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"> <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center"> <div className="flex items-center gap-3"> <div className="bg-white p-1.5 rounded-md shadow-sm border border-gray-100"> {account.type === AccountType.PERSONAL ? <User className="w-5 h-5 text-indigo-600" /> : <Users className="w-5 h-5 text-indigo-600" />} </div> <div> <h3 className="font-bold text-gray-900">{account.name}</h3> <div className="flex items-center gap-2"><Badge color={account.type === AccountType.PERSONAL ? 'blue' : 'purple'}>{account.type}</Badge>
+          <button onClick={() => handleDeleteAccount(account.id, account.name)} className="text-gray-400 hover:text-red-500 transition-colors p-1" title="删除账户"><Trash2 className="w-3.5 h-3.5" /></button></div> </div> </div> <div className="flex items-center gap-4"> <div className="text-right"> <div className="text-xs text-gray-500">账户资产</div> <div className="font-mono font-bold text-gray-900">¥ {accTotal.toLocaleString()}</div> </div> <button onClick={() => openAddAsset(account.id)} className="p-2 hover:bg-gray-200 rounded-full text-indigo-600 transition-colors" title="录入外部资产" > <Plus className="w-5 h-5" /> </button> </div> </div> <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6"> <div className="lg:col-span-1 h-[200px] relative"> <h4 className="absolute top-0 left-0 text-xs font-semibold text-gray-500 z-10">配置分布</h4> <ResponsiveContainer width="100%" height="100%"> <PieChart> <Pie data={accAllocation} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value"> {accAllocation.map((entry, idx) => (<Cell key={`cell-${idx}`} fill={getChartColorForType(entry.name as FundType | 'CASH')} />))} </Pie> <RechartsTooltip formatter={(val: number) => `¥${val.toLocaleString()}`} /> <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '10px' }} /> </PieChart> </ResponsiveContainer> </div> <div className="lg:col-span-2 overflow-x-auto"> <table className="min-w-full divide-y divide-gray-200"> <thead> <tr> <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">资产名称</th> <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">类型</th> <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">市值</th> <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">盈亏</th> </tr> </thead> <tbody className="divide-y divide-gray-200"> <tr> <td className="px-3 py-2 text-sm text-gray-900 flex items-center gap-2"> <div className="w-2 h-2 rounded-full bg-cyan-500"></div> 现金余额 </td> <td className="px-3 py-2 text-xs text-gray-500">CASH</td> <td className="px-3 py-2 text-sm text-gray-900 font-mono text-right">¥{(account.cashBalance || 0).toLocaleString()}</td> <td className="px-3 py-2 text-sm text-gray-400 text-right">-</td> </tr> {account.holdings.map((h, idx) => { const val = getHoldingValue(h); const cost = h.avgCost * h.shares; const pl = val - cost; const plPercent = (pl / cost) * 100; return (<tr key={idx}> <td className="px-3 py-2 text-sm text-gray-900"> {getHoldingName(h)} {h.isExternal && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1 rounded">外部</span>} </td> <td className="px-3 py-2 text-xs"><Badge color={getFundTypeColor(getHoldingType(h))}>{getHoldingType(h)}</Badge></td> <td className="px-3 py-2 text-sm text-gray-900 font-mono text-right">¥{val.toLocaleString()}</td> <td className="px-3 py-2 text-sm font-mono text-right"> <span className={pl >= 0 ? 'text-red-600' : 'text-green-600'}> {plPercent.toFixed(2)}% </span> </td> </tr>); })} </tbody> </table> </div> </div> </div>);
+      })} </div>
+      <AddAccountModal
+        isOpen={isAddAccountOpen}
+        onClose={() => setIsAddAccountOpen(false)}
+        clientId={portfolio.id}
+        onAdd={onRefresh}
+      />
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6"> <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4"> <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"> <Activity className="w-5 h-5 text-indigo-600" /> 业绩透视 </h3> <div className="flex flex-wrap gap-3"> <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="text-xs border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 py-1.5" > <option value="ALL">全部账户资产</option> {portfolio.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)} </select> <div className="flex bg-gray-100 rounded-lg p-1"> <button onClick={() => setMetric('NAV')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${metric === 'NAV' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>净值走势</button> <button onClick={() => setMetric('CHANGE')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${metric === 'CHANGE' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>日涨跌幅</button> </div> <div className="flex bg-gray-100 rounded-lg p-1"> <button onClick={() => setChartView('OVERLAY')} className={`p-1.5 rounded-md transition-all ${chartView === 'OVERLAY' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`} title="合并展示"><Layers className="w-4 h-4" /></button> <button onClick={() => setChartView('GRID')} className={`p-1.5 rounded-md transition-all ${chartView === 'GRID' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`} title="分图展示"><Grid className="w-4 h-4" /></button> </div> {chartView === 'OVERLAY' && (<select value={selectedRange} onChange={e => setSelectedRange(e.target.value === 'YTD' ? 'YTD' : Number(e.target.value))} className="text-xs border-gray-300 rounded-md py-1.5"> {TIME_RANGES.filter(r => r.value !== 'SINCE_INCEPTION').map(r => <option key={r.label} value={r.value}>{r.label}</option>)} </select>)} </div> </div> {chartView === 'OVERLAY' ? (<ComparisonChart data={performanceChartDataObj.chartData} funds={displayedFunds} patchRules={patchRules} allFunds={MOCK_FUNDS} metric={metric} viewMode="OVERLAY" />) : (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> {displayedFunds.map(fund => (<SingleFundPerformanceCard key={fund.id} fund={fund} patchRules={patchRules} allFunds={MOCK_FUNDS} />))} </div>)} </div>
       <AddAssetModal isOpen={isAddAssetOpen} onClose={() => setIsAddAssetOpen(false)} accounts={portfolio.accounts} initialAccountId={addAssetTargetAccount} onAdd={onAddExternalAsset} />
     </div>
@@ -1092,14 +1178,22 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
   const currentAvailable = liquidityData[LiquidityTier.CASH]; const currentLocked = liquidityData['Total'] - currentAvailable; const totalProjectedExpense = useMemo(() => projectionData.reduce((sum, p) => sum + (p.rawExpense || 0), 0), [projectionData]);
 
   // -- NEW STATE FOR SELECTED DATE DETAIL --
-  const [selectedDateData, setSelectedDateData] = useState<any>(null);
+  // -- NEW STATE FOR SELECTED DATE DETAIL --
+  const [selectedDateStr, setSelectedDateStr] = useState<string>('');
 
   // Initialize selection with the first data point if available
   useEffect(() => {
-    if (projectionData.length > 0 && !selectedDateData) {
-      setSelectedDateData(projectionData[0]);
+    if (projectionData.length > 0 && !selectedDateStr) {
+      setSelectedDateStr(projectionData[0].date);
     }
   }, [projectionData]);
+
+  // Derive data dynamically to ensure updates appear immediately
+  const selectedDateData = useMemo(() => {
+    if (!projectionData || projectionData.length === 0) return null;
+    if (!selectedDateStr) return projectionData[0];
+    return projectionData.find(p => p.date === selectedDateStr) || projectionData[0];
+  }, [projectionData, selectedDateStr]);
 
   // Refactored detailed content renderer (Shared between Tooltip and Side Panel)
   const renderDetailContent = (data: any, label: string) => {
@@ -1181,10 +1275,10 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
               if (nextState && nextState.activeLabel) {
                 // Reliable method: find data by X-axis label
                 const item = projectionData.find(p => p.displayDate === nextState.activeLabel);
-                if (item) setSelectedDateData(item);
+                if (item) setSelectedDateStr(item.date);
               } else if (nextState && nextState.activePayload && nextState.activePayload.length) {
                 // Fallback method
-                setSelectedDateData(nextState.activePayload[0].payload);
+                setSelectedDateStr(nextState.activePayload[0].payload.date);
               }
             }}
           >
@@ -1201,7 +1295,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
               fill="#4f46e5"
               radius={[4, 4, 0, 0]}
               cursor="pointer"
-              onClick={(data) => setSelectedDateData(data.payload)}
+              onClick={(data) => setSelectedDateStr(data.payload.date)}
             />
             <Bar
               dataKey="locked"
@@ -1209,7 +1303,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
               fill="#cbd5e1"
               radius={[0, 0, 0, 0]}
               cursor="pointer"
-              onClick={(data) => setSelectedDateData(data.payload)}
+              onClick={(data) => setSelectedDateStr(data.payload.date)}
             />
             <Bar
               dataKey="expense"
@@ -1217,7 +1311,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
               fill="#ef4444"
               radius={[0, 0, 4, 4]}
               cursor="pointer"
-              onClick={(data) => setSelectedDateData(data.payload)}
+              onClick={(data) => setSelectedDateStr(data.payload.date)}
             />
           </BarChart>
         </ResponsiveContainer>
@@ -1345,7 +1439,7 @@ const PortfolioLoader: React.FC<{
     return <div className="text-center text-gray-500 p-8">请选择客户或加载数据失败</div>;
   }
 
-  return <PortfolioPage portfolio={currentPortfolio} patchRules={patchRules} onAddExternalAsset={onAddExternalAsset} />;
+  return <PortfolioPage portfolio={currentPortfolio} patchRules={patchRules} onAddExternalAsset={onAddExternalAsset} onRefresh={() => setPortfolio(null)} />; // Force reload by clearing portfolio, trigger effect
 };
 
 const App: React.FC = () => {
@@ -1360,6 +1454,7 @@ const App: React.FC = () => {
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
   const [editingRuleContext, setEditingRuleContext] = useState<{ accId: string, hIdx: number, hName: string, rule?: RedemptionRule, fundId?: string } | null>(null);
   const [fundRefreshTrigger, setFundRefreshTrigger] = useState(0);
+  const [portfolioRefreshTrigger, setPortfolioRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const fetchPortfolio = async () => {
@@ -1379,7 +1474,7 @@ const App: React.FC = () => {
       }
     };
     fetchPortfolio();
-  }, []);
+  }, [portfolioRefreshTrigger]);
 
   // Fetch Funds (Global Data)
   useEffect(() => {
@@ -1427,11 +1522,7 @@ const App: React.FC = () => {
       id: newId,
       accountId: accountId,
       fundId: holding.fundId, // Might be undefined for pure external
-      isExternal: holding.isExternal,
-      externalName: holding.externalName,
-      externalType: holding.externalType,
-      externalNav: holding.externalNav,
-      externalNavDate: holding.externalNavDate,
+      externalProductId: holding.externalProductId,
       shares: holding.shares,
       avgCost: holding.avgCost,
       redemptionRule: holding.redemptionRule
@@ -1485,12 +1576,16 @@ const App: React.FC = () => {
           const newHoldings = [...acc.holdings];
           const holding = newHoldings[holdingIdx];
           if (holding) {
+            let updatedHolding;
             if (rule === null) {
+              // Remove rule
               const { redemptionRule, ...rest } = holding;
-              newHoldings[holdingIdx] = rest;
+              updatedHolding = rest;
             } else {
-              newHoldings[holdingIdx] = { ...holding, redemptionRule: rule };
+              // Update/Add rule
+              updatedHolding = { ...holding, redemptionRule: rule };
             }
+            newHoldings[holdingIdx] = updatedHolding as Holding;
           }
           return { ...acc, holdings: newHoldings };
         }
@@ -1637,7 +1732,7 @@ const App: React.FC = () => {
                 <Route path="/" element={<FundListPage />} />
                 <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} refreshTrigger={fundRefreshTrigger} onEditLiquidity={(name, rule, fundId) => { setEditingRuleContext({ accId: 'FUND_UPDATE', hIdx: -1, hName: name, rule, fundId }); setRuleModalOpen(true); }} />} />
                 <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
-                <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio!} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
+                <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio!} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} onRefresh={() => setPortfolioRefreshTrigger(p => p + 1)} />} />
                 <Route path="/portfolio/:clientId" element={<PortfolioLoader currentPortfolio={portfolio} setPortfolio={setPortfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
                 <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} funds={funds} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
                 <Route path="/liquidity/long-term" element={<LongTermForecastPage portfolio={portfolio} funds={funds} />} />
@@ -1668,6 +1763,102 @@ const NavLink = ({ to, icon, label }: { to: string, icon: React.ReactNode, label
       {icon}
       {label}
     </Link>
+  );
+};
+
+// --- NEW COMPONENT: Add Account Modal ---
+const AddAccountModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  clientId: string;
+  onAdd: () => void;
+}> = ({ isOpen, onClose, clientId, onAdd }) => {
+  const [name, setName] = useState('');
+  const [type, setType] = useState('个人自有账户'); // Default to custom or ENUM?
+  const [cashBalance, setCashBalance] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = () => {
+    if (!name || !type) return;
+    setIsSubmitting(true);
+    fetch('/api/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId,
+        name,
+        type,
+        cashBalance: Number(cashBalance) || 0
+      })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to create account");
+        onAdd();
+        onClose();
+        // Reset form
+        setName('');
+        setCashBalance('');
+      })
+      .catch(err => {
+        console.error(err);
+        alert("创建账户失败");
+      })
+      .finally(() => setIsSubmitting(false));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl p-6 w-[400px]">
+        <h3 className="text-lg font-bold mb-4">添加新账户</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">账户名称</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="例如：主账户"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">账户类型</label>
+            <select
+              value={type}
+              onChange={e => setType(e.target.value)}
+              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="个人自有账户">个人自有账户</option>
+              <option value="家族信托账户">家族信托账户</option>
+              <option value="PERSONAL">PERSONAL</option>
+              <option value="FAMILY_TRUST">FAMILY_TRUST</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">初始现金余额</label>
+            <input
+              type="number"
+              value={cashBalance}
+              onChange={e => setCashBalance(e.target.value)}
+              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-md border border-gray-300">取消</button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !name}
+            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-50"
+          >
+            {isSubmitting ? '提交中...' : '创建账户'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

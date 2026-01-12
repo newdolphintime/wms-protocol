@@ -7,7 +7,6 @@ DB_CONFIG = {
     'password': 'Zhangwei@123',
     'host': 'localhost',
     'database': 'wms',
-    'charset': 'utf8mb4'
 }
 
 def seed_data():
@@ -21,19 +20,19 @@ def seed_data():
     # --- Table: funds ---
     print('Seeding funds...')
     cursor.execute('TRUNCATE TABLE funds;')
-    sql_funds = "INSERT INTO funds (`id`, `code`, `name`, `manager`, `type`, `nav`, `day_change`, `ytd_return`, `risk_level`, `inception_date`, `description`, `created_at`) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    sql_funds = "INSERT INTO funds (`id`, `code`, `name`, `manager`, `type`, `nav`, `day_change`, `ytd_return`, `risk_level`, `inception_date`, `description`, `liquidity_rule_type`, `settlement_days`, `open_day`, `has_lockup`, `lockup_days`, `maturity_date`, `liquidity_notes`, `created_at`) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
     data_funds = [
-        ('1', '510300', '华泰柏瑞沪深300ETF', '柳军', '宽基指数ETF', Decimal('4.0230'), Decimal('0.85'), Decimal('4.50'), 3, datetime.date(2012, 5, 4), 'A股市场规模最大的权益类ETF，紧密跟踪沪深300指数，覆盖A股核心资产。', datetime.date(2025, 12, 27)),
-        ('10', '513180', '华夏恒生科技ETF(QDII)', '徐猛', '跨境ETF', Decimal('0.6500'), Decimal('3.20'), Decimal('12.50'), 5, datetime.date(2024, 5, 18), '投资于港股恒生科技指数，覆盖互联网巨头及新兴科技企业。', datetime.date(2025, 12, 27)),
-        ('2', '510310', '易方达沪深300ETF', '余海燕', '宽基指数ETF', Decimal('1.9850'), Decimal('0.82'), Decimal('4.30'), 3, datetime.date(2013, 3, 6), '费率低廉，跟踪误差小，是机构投资者配置沪深300指数的重要工具。', datetime.date(2025, 12, 27)),
-        ('3', '588000', '华夏上证科创板50ETF', '张弘弢', '行业主题ETF', Decimal('0.8920'), Decimal('1.56'), Decimal('-5.20'), 5, datetime.date(2020, 9, 28), '紧密跟踪科创50指数，聚焦科创板核心科技企业，具有高弹性特征。', datetime.date(2025, 12, 27)),
-        ('4', '510050', '华夏上证50ETF', '张弘弢', '宽基指数ETF', Decimal('2.8560'), Decimal('0.45'), Decimal('6.80'), 3, datetime.date(2004, 12, 30), '国内首只ETF，跟踪上证50指数，代表上海证券市场最具代表性的超大盘蓝筹股。', datetime.date(2025, 12, 27)),
-        ('5', '159919', '嘉实沪深300ETF', '何如', '宽基指数ETF', Decimal('4.1020'), Decimal('0.84'), Decimal('4.40'), 3, datetime.date(2012, 5, 7), '深市规模领先的沪深300ETF，流动性良好，适合长期配置。', datetime.date(2025, 12, 27)),
-        ('6', '510500', '南方中证500ETF', '罗文杰', '宽基指数ETF', Decimal('5.6700'), Decimal('1.10'), Decimal('2.10'), 4, datetime.date(2013, 2, 6), '跟踪中证500指数，代表A股市场中盘成长股风格，行业分布均衡。', datetime.date(2025, 12, 27)),
-        ('7', '159915', '易方达创业板ETF', '成曦', '行业主题ETF', Decimal('2.3400'), Decimal('1.85'), Decimal('-2.50'), 5, datetime.date(2011, 9, 20), '跟踪创业板指，聚焦新兴产业和高新技术企业，成长性强但波动较大。', datetime.date(2025, 12, 27)),
-        ('8', '510330', '华夏沪深300ETF', '赵宗庭', '宽基指数ETF', Decimal('3.9500'), Decimal('0.83'), Decimal('4.20'), 3, datetime.date(2012, 12, 25), '华夏基金旗下的沪深300ETF，管理经验丰富，跟踪效果稳定。', datetime.date(2025, 12, 27)),
-        ('9', '512880', '国泰中证全指证券公司ETF', '艾小军', '行业主题ETF', Decimal('1.0500'), Decimal('2.10'), Decimal('8.50'), 5, datetime.date(2016, 7, 26), '跟踪证券公司指数，被誉为“牛市旗手”，是博取市场贝塔收益的利器。', datetime.date(2025, 12, 27)),
-        ('demo-1', 'DEMO001', '多源补齐演示ETF', '演示账号', '策略ETF', Decimal('1.0000'), Decimal('0.05'), Decimal('0.50'), 3, datetime.date(2024, 11, 27), '这是一个用于演示多源数据补齐功能的虚拟基金。成立仅30天，查看近3月数据时会自动展示补齐效果。', datetime.date(2025, 12, 27)),
+        ('1', '510300', '华泰柏瑞沪深300ETF', '柳军', '宽基指数ETF', Decimal('4.0230'), Decimal('0.85'), Decimal('4.50'), 3, datetime.date(2012, 5, 4), 'A股市场规模最大的权益类ETF，紧密跟踪沪深300指数，覆盖A股核心资产。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('10', '513180', '华夏恒生科技ETF(QDII)', '徐猛', '跨境ETF', Decimal('0.6500'), Decimal('3.20'), Decimal('12.50'), 5, datetime.date(2024, 5, 18), '投资于港股恒生科技指数，覆盖互联网巨头及新兴科技企业。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('2', '510310', '易方达沪深300ETF', '余海燕', '宽基指数ETF', Decimal('1.9850'), Decimal('0.82'), Decimal('4.30'), 3, datetime.date(2013, 3, 6), '费率低廉，跟踪误差小，是机构投资者配置沪深300指数的重要工具。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('3', '588000', '华夏上证科创板50ETF', '张弘弢', '行业主题ETF', Decimal('0.8920'), Decimal('1.56'), Decimal('-5.20'), 5, datetime.date(2020, 9, 28), '紧密跟踪科创50指数，聚焦科创板核心科技企业，具有高弹性特征。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('4', '510050', '华夏上证50ETF', '张弘弢', '宽基指数ETF', Decimal('2.8560'), Decimal('0.45'), Decimal('6.80'), 3, datetime.date(2004, 12, 30), '国内首只ETF，跟踪上证50指数，代表上海证券市场最具代表性的超大盘蓝筹股。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('5', '159919', '嘉实沪深300ETF', '何如', '宽基指数ETF', Decimal('4.1020'), Decimal('0.84'), Decimal('4.40'), 3, datetime.date(2012, 5, 7), '深市规模领先的沪深300ETF，流动性良好，适合长期配置。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('6', '510500', '南方中证500ETF', '罗文杰', '宽基指数ETF', Decimal('5.6700'), Decimal('1.10'), Decimal('2.10'), 4, datetime.date(2013, 2, 6), '跟踪中证500指数，代表A股市场中盘成长股风格，行业分布均衡。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('7', '159915', '易方达创业板ETF', '成曦', '行业主题ETF', Decimal('2.3400'), Decimal('1.85'), Decimal('-2.50'), 5, datetime.date(2011, 9, 20), '跟踪创业板指，聚焦新兴产业和高新技术企业，成长性强但波动较大。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('8', '510330', '华夏沪深300ETF', '赵宗庭', '宽基指数ETF', Decimal('3.9500'), Decimal('0.83'), Decimal('4.20'), 3, datetime.date(2012, 12, 25), '华夏基金旗下的沪深300ETF，管理经验丰富，跟踪效果稳定。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('9', '512880', '国泰中证全指证券公司ETF', '艾小军', '行业主题ETF', Decimal('1.0500'), Decimal('2.10'), Decimal('8.50'), 5, datetime.date(2016, 7, 26), '跟踪证券公司指数，被誉为“牛市旗手”，是博取市场贝塔收益的利器。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
+        ('demo-1', 'DEMO001', '多源补齐演示ETF', '演示账号', '策略ETF', Decimal('1.0000'), Decimal('0.05'), Decimal('0.50'), 3, datetime.date(2024, 11, 27), '这是一个用于演示多源数据补齐功能的虚拟基金。成立仅30天，查看近3月数据时会自动展示补齐效果。', 'DAILY', 1, None, 0, None, None, None, datetime.date(2025, 12, 27)),
     ]
     cursor.executemany(sql_funds, data_funds)
     conn.commit()
@@ -5432,12 +5431,24 @@ def seed_data():
     cursor.executemany(sql_fund_patch_rules, data_fund_patch_rules)
     conn.commit()
 
+    # --- Table: external_products ---
+    print('Seeding external_products...')
+    cursor.execute('TRUNCATE TABLE external_products;')
+    sql_external_products = "INSERT INTO external_products (`id`, `product_code`, `product_name`, `product_type`, `issuer`, `latest_nav`, `nav_date`, `status`, `is_active`, `liquidity_rule_type`, `settlement_days`, `open_day`, `has_lockup`, `lockup_days`, `maturity_date`, `liquidity_notes`, `advanced_config`, `description`, `created_at`, `updated_at`) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    data_external_products = [
+        ('ep-001', 'TRUST-01', '中信信托-稳健1号', '信托计划', '中信信托', Decimal('1.0520'), datetime.date(2026, 1, 10), '运行中', 1, 'MONTHLY', 10, 15, 0, None, None, None, None, None, datetime.date(2026, 1, 12), datetime.date(2026, 1, 12)),
+        ('ep-002', 'PE-S01', '九鼎成长股权投资基金', '私募股权', '九鼎投资', Decimal('2.1500'), datetime.date(2026, 1, 8), '运行中', 1, 'FIXED_TERM', 30, None, 1, 1095, None, None, None, None, datetime.date(2026, 1, 12), datetime.date(2026, 1, 12)),
+        ('ep-legacy-01', 'LEGACY-01', '旧版外部理财', '行业主题ETF', '系统迁移', Decimal('1.5000'), datetime.date(2025, 12, 28), '运行中', 1, 'DAILY', 1, None, 0, None, None, None, None, None, datetime.date(2026, 1, 12), datetime.date(2026, 1, 12)),
+    ]
+    cursor.executemany(sql_external_products, data_external_products)
+    conn.commit()
+
     # --- Table: clients ---
     print('Seeding clients...')
     cursor.execute('TRUNCATE TABLE clients;')
-    sql_clients = "INSERT INTO clients (`id`, `name`, `created_at`) VALUES (%s, %s, %s)"
+    sql_clients = "INSERT INTO clients (`id`, `name`, `phone`, `gender`, `status`, `risk_level`, `last_contact_date`, `tags`, `created_at`) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
     data_clients = [
-        ('client-001', '张伟 (Mr. Zhang Wei)', datetime.date(2025, 12, 28)),
+        ('client-001', '张伟 (Mr. Zhang Wei)', '13800000000', 'M', 'VIP', 'C4-积极型', datetime.date(2026, 1, 12), '[]', datetime.date(2025, 12, 28)),
     ]
     cursor.executemany(sql_clients, data_clients)
     conn.commit()
@@ -5450,6 +5461,7 @@ def seed_data():
         ('acc-01', 'client-001', '个人尊享理财账户', '个人自有账户', None, Decimal('500000.00'), datetime.date(2025, 12, 28)),
         ('acc-02', 'client-001', '张氏家族信托 - 稳健成长一号', '家族信托账户', None, Decimal('2000000.00'), datetime.date(2025, 12, 28)),
         ('acc-03', 'client-001', '张氏家族信托 - 海外配置二号', '家族信托账户', None, Decimal('300000.00'), datetime.date(2025, 12, 28)),
+        ('acc-05f9b875', 'client-001', '超级账户', '家族信托账户', None, Decimal('200000.00'), datetime.date(2026, 1, 12)),
     ]
     cursor.executemany(sql_accounts, data_accounts)
     conn.commit()
@@ -5457,17 +5469,40 @@ def seed_data():
     # --- Table: holdings ---
     print('Seeding holdings...')
     cursor.execute('TRUNCATE TABLE holdings;')
-    sql_holdings = "INSERT INTO holdings (`id`, `account_id`, `fund_id`, `is_external`, `external_name`, `external_type`, `external_nav`, `external_nav_date`, `shares`, `avg_cost`, `redemption_config`, `created_at`, `updated_at`) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    sql_holdings = "INSERT INTO holdings (`id`, `account_id`, `fund_id`, `external_product_id`, `shares`, `avg_cost`, `purchase_date`, `redemption_config`, `created_at`, `updated_at`) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
     data_holdings = [
-        ('acc-01_h_0', 'acc-01', '1', 0, None, None, None, None, Decimal('50000.00'), Decimal('3.6500'), None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
-        ('acc-01_h_1', 'acc-01', '3', 0, None, None, None, None, Decimal('100000.00'), Decimal('1.1000'), None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
-        ('acc-02_h_0', 'acc-02', '4', 0, None, None, None, None, Decimal('200000.00'), Decimal('2.6000'), None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
-        ('acc-02_h_1', 'acc-02', '6', 0, None, None, None, None, Decimal('50000.00'), Decimal('5.5000'), None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
-        ('acc-03_h_0', 'acc-03', '10', 0, None, None, None, None, Decimal('1500000.00'), Decimal('0.5500'), None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
-        ('h-1766911997797', 'acc-02', None, 1, '某私募', '行业主题ETF', Decimal('1.5000'), datetime.date(2025, 12, 28), Decimal('2222.00'), Decimal('1000.0000'), None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
-        ('h-1766912552547', 'acc-03', None, 1, '私募二期', '行业主题ETF', Decimal('2.0000'), datetime.date(2025, 12, 28), Decimal('33333.00'), Decimal('2000.0000'), '{"openDay": 1, "ruleType": "MONTHLY", "maturityDate": null, "lockupEndDate": null, "settlementDays": 10}', datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
+        ('acc-01_h_0', 'acc-01', '1', None, Decimal('50000.00'), Decimal('3.6500'), None, '{"ruleType": "DAILY", "settlementDays": 11}', datetime.date(2025, 12, 28), datetime.date(2026, 1, 12)),
+        ('acc-01_h_1', 'acc-01', '3', None, Decimal('100000.00'), Decimal('1.1000'), None, None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
+        ('acc-02_h_0', 'acc-02', '4', None, Decimal('200000.00'), Decimal('2.6000'), None, None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
+        ('acc-02_h_ex1', 'acc-02', None, 'ep-001', Decimal('1000000.00'), Decimal('1.0000'), None, None, datetime.date(2026, 1, 10), datetime.date(2026, 1, 10)),
+        ('acc-03_h_0', 'acc-03', '10', None, Decimal('1500000.00'), Decimal('0.5500'), None, None, datetime.date(2025, 12, 28), datetime.date(2025, 12, 28)),
+        ('acc-03_h_ex2', 'acc-03', None, 'ep-002', Decimal('500000.00'), Decimal('2.0000'), None, '{"ruleType": "DAILY", "settlementDays": 9}', datetime.date(2026, 1, 8), datetime.date(2026, 1, 12)),
+        ('h-1768224756009', 'acc-05f9b875', None, 'ep-001', Decimal('1000.00'), Decimal('6.0000'), None, None, datetime.date(2026, 1, 12), datetime.date(2026, 1, 12)),
+        ('h-1768224782246', 'acc-05f9b875', None, 'ep-001', Decimal('200000.00'), Decimal('2.0000'), None, None, datetime.date(2026, 1, 12), datetime.date(2026, 1, 12)),
+        ('h-1768224871796', 'acc-05f9b875', None, 'ep-002', Decimal('2000.00'), Decimal('2.1500'), None, None, datetime.date(2026, 1, 12), datetime.date(2026, 1, 12)),
+        ('h-1768225052435', 'acc-05f9b875', None, 'ep-001', Decimal('200.00'), Decimal('1.0520'), None, None, datetime.date(2026, 1, 12), datetime.date(2026, 1, 12)),
+        ('h-legacy-1', 'acc-01', None, 'ep-legacy-01', Decimal('2222.00'), Decimal('1000.0000'), None, '{"ruleType": "DAILY", "settlementDays": 10}', datetime.date(2025, 12, 28), datetime.date(2026, 1, 12)),
     ]
     cursor.executemany(sql_holdings, data_holdings)
+    conn.commit()
+
+    # --- Table: recurring_rules ---
+    print('Seeding recurring_rules...')
+    cursor.execute('TRUNCATE TABLE recurring_rules;')
+    # No data for recurring_rules
+
+    # --- Table: cash_flows ---
+    print('Seeding cash_flows...')
+    cursor.execute('TRUNCATE TABLE cash_flows;')
+    sql_cash_flows = "INSERT INTO cash_flows (`id`, `date`, `amount`, `description`, `type`, `recurring_rule_id`, `related_holding_key`, `created_at`) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+    data_cash_flows = [
+        ('1768227177605', datetime.date(2026, 1, 14), Decimal('200000.00'), '赔款', 'OUTFLOW', None, None, datetime.date(2026, 1, 12)),
+        ('1768227208991', datetime.date(2026, 1, 22), Decimal('30000.00'), '保费', 'OUTFLOW', None, None, datetime.date(2026, 1, 12)),
+        ('1768227271389', datetime.date(2026, 1, 22), Decimal('20000.00'), '按摩', 'OUTFLOW', None, None, datetime.date(2026, 1, 12)),
+        ('1768227320180', datetime.date(2026, 1, 23), Decimal('3000.00'), '我去', 'OUTFLOW', None, None, datetime.date(2026, 1, 12)),
+        ('1768227355499', datetime.date(2026, 1, 15), Decimal('30455.00'), '年终奖', 'INFLOW', None, None, datetime.date(2026, 1, 12)),
+    ]
+    cursor.executemany(sql_cash_flows, data_cash_flows)
     conn.commit()
 
     cursor.execute('SET FOREIGN_KEY_CHECKS = 1;')
