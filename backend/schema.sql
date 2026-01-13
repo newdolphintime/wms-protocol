@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     client_id VARCHAR(36) NOT NULL,
     name VARCHAR(100) NOT NULL,
     type VARCHAR(50) NOT NULL COMMENT 'Enum: PERSONAL, FAMILY_TRUST',
+    currency VARCHAR(10) DEFAULT 'CNY' COMMENT 'Account Currency',
     description VARCHAR(255),
     cash_balance DECIMAL(15, 2) DEFAULT 0.00,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

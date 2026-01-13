@@ -11,6 +11,7 @@
 > - v20260108.v2: `PUT /api/holdings/{id}` 支持清除规则
 > - v20260111.v1: 完善外部产品 (External Products) 与现金流 (Cash Flows) 接口定义
 > - v20260112.v1: 新增客户管理 (Clients) 接口及现金流 Client ID 过滤
+> - v20260113.v1: 修复路由遮挡导致 API 404 的问题；修复持仓数据刷新问题；更新 `accounts` 表结构。
 
 ### 1.1 获取基金列表
 *   **Method**: `GET`

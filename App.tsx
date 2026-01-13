@@ -1403,11 +1403,12 @@ const PortfolioLoader: React.FC<{
 }> = ({ currentPortfolio, setPortfolio, patchRules, onAddExternalAsset }) => {
   const { clientId } = useParams<{ clientId: string }>();
   const [loading, setLoading] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
-    if (clientId && (!currentPortfolio || currentPortfolio.id !== clientId)) {
+    if (clientId && (!currentPortfolio || currentPortfolio.id !== clientId || refreshTrigger > 0)) {
       setLoading(true);
-      fetch(`/api/portfolios/${clientId}`)
+      fetch(`/api/portfolios/${clientId}?_t=${Date.now()}`)
         .then(res => {
           if (!res.ok) throw new Error("Client not found");
           return res.json();
@@ -1422,7 +1423,7 @@ const PortfolioLoader: React.FC<{
           setLoading(false);
         });
     }
-  }, [clientId]); // Depend only on clientId to avoid loops
+  }, [clientId, refreshTrigger]); // Depend only on clientId to avoid loops
 
   if (loading) {
     return (
@@ -1439,7 +1440,7 @@ const PortfolioLoader: React.FC<{
     return <div className="text-center text-gray-500 p-8">请选择客户或加载数据失败</div>;
   }
 
-  return <PortfolioPage portfolio={currentPortfolio} patchRules={patchRules} onAddExternalAsset={onAddExternalAsset} onRefresh={() => setPortfolio(null)} />; // Force reload by clearing portfolio, trigger effect
+  return <PortfolioPage portfolio={currentPortfolio} patchRules={patchRules} onAddExternalAsset={onAddExternalAsset} onRefresh={() => setRefreshTrigger(prev => prev + 1)} />;
 };
 
 const App: React.FC = () => {

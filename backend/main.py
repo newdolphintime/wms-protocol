@@ -1240,32 +1240,6 @@ def delete_cash_flow(flow_id: str):
         cursor.close()
         conn.close()
 
-# --- Static File Serving ---
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import os
-
-# Define the path to the frontend build directory
-dist_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dist")
-
-if os.path.exists(dist_dir):
-    # 1. Mount assets (Vite puts JS/CSS in /assets)
-    if os.path.exists(os.path.join(dist_dir, "assets")):
-        app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
-
-    # 2. Catch-all route for SPA (React Router)
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        # If API request fell through (shouldn't happen if API routes distinct), return 404?
-        if full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="API endpoint not found")
-            
-        file_path = os.path.join(dist_dir, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        
-        # Default to index.html for client-side routing
-        return FileResponse(os.path.join(dist_dir, "index.html"))
 
 
 
@@ -1495,6 +1469,34 @@ def update_holding(holding_id: str, update: HoldingUpdate):
         conn.close()
 
 
+
+
+# --- Static File Serving ---
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+
+# Define the path to the frontend build directory
+dist_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dist")
+
+if os.path.exists(dist_dir):
+    # 1. Mount assets (Vite puts JS/CSS in /assets)
+    if os.path.exists(os.path.join(dist_dir, "assets")):
+        app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
+
+    # 2. Catch-all route for SPA (React Router)
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # If API request fell through (shouldn't happen if API routes distinct), return 404?
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+            
+        file_path = os.path.join(dist_dir, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # Default to index.html for client-side routing
+        return FileResponse(os.path.join(dist_dir, "index.html"))
 
 if __name__ == "__main__":
     import uvicorn
