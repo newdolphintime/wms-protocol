@@ -22,7 +22,10 @@ DB_CONFIG = {
     'database': 'wms',
 }
 
-OUTPUT_FILE = 'seed_data.py'
+import os
+
+# Output to the same directory as this script
+OUTPUT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'seed_data.py')
 
 def get_python_repr(value):
     if isinstance(value, datetime.date):
