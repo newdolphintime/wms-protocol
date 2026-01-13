@@ -1396,15 +1396,14 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
   );
 };
 
-const PortfolioLoader: React.FC<{
+const ClientDataLoader: React.FC<{
   currentPortfolio: ClientPortfolio | null;
   setPortfolio: (p: ClientPortfolio | null) => void;
-  patchRules: any[];
-  onAddExternalAsset: any;
-}> = ({ currentPortfolio, setPortfolio, patchRules, onAddExternalAsset }) => {
+  refreshTrigger: number;
+  children: React.ReactNode;
+}> = ({ currentPortfolio, setPortfolio, refreshTrigger, children }) => {
   const { clientId } = useParams<{ clientId: string }>();
   const [loading, setLoading] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     if (clientId && (!currentPortfolio || currentPortfolio.id !== clientId || refreshTrigger > 0)) {
@@ -1424,7 +1423,7 @@ const PortfolioLoader: React.FC<{
           setLoading(false);
         });
     }
-  }, [clientId, refreshTrigger]); // Depend only on clientId to avoid loops
+  }, [clientId, refreshTrigger]);
 
   if (loading) {
     return (
@@ -1438,10 +1437,10 @@ const PortfolioLoader: React.FC<{
   }
 
   if (!currentPortfolio) {
-    return <div className="text-center text-gray-500 p-8">请选择客户或加载数据失败</div>;
+    return <div className="text-center text-red-500 p-8">未找到该客户数据或加载失败</div>;
   }
 
-  return <PortfolioPage portfolio={currentPortfolio} patchRules={patchRules} onAddExternalAsset={onAddExternalAsset} onRefresh={() => setRefreshTrigger(prev => prev + 1)} />;
+  return <>{children}</>;
 };
 
 const App: React.FC = () => {
@@ -1715,9 +1714,18 @@ const App: React.FC = () => {
                 <Route path="/" element={<FundListPage />} />
                 <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} refreshTrigger={fundRefreshTrigger} onEditLiquidity={(name, rule, fundId) => { setEditingRuleContext({ accId: 'FUND_UPDATE', hIdx: -1, hName: name, rule, fundId }); setRuleModalOpen(true); }} />} />
                 <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
-                <Route path="/portfolio" element={<ClientSearch />} />
-                <Route path="/portfolio/:clientId" element={<PortfolioLoader currentPortfolio={portfolio} setPortfolio={setPortfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
-                <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} funds={funds} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
+                <Route path="/portfolio" element={<ClientSearch targetPath="/portfolio" />} />
+                <Route path="/portfolio/:clientId" element={
+                  <ClientDataLoader currentPortfolio={portfolio} setPortfolio={setPortfolio} refreshTrigger={portfolioRefreshTrigger}>
+                    <PortfolioPage portfolio={portfolio!} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} onRefresh={() => setPortfolioRefreshTrigger(p => p + 1)} />
+                  </ClientDataLoader>
+                } />
+                <Route path="/liquidity" element={<ClientSearch targetPath="/liquidity" />} />
+                <Route path="/liquidity/:clientId" element={
+                  <ClientDataLoader currentPortfolio={portfolio} setPortfolio={setPortfolio} refreshTrigger={portfolioRefreshTrigger}>
+                    <LiquidityPage portfolio={portfolio!} funds={funds} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />
+                  </ClientDataLoader>
+                } />
                 <Route path="/liquidity/long-term" element={<LongTermForecastPage portfolio={portfolio} funds={funds} />} />
                 <Route path="/clients" element={<ClientListPage />} />
                 <Route path="/proposal" element={<ProposalGenerator />} />

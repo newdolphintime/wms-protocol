@@ -3,7 +3,7 @@ import { Search, User, Phone, ArrowRight, Loader2 } from 'lucide-react';
 import { Client, getClients } from '../services/clientService';
 import { useNavigate } from 'react-router-dom';
 
-const ClientSearch: React.FC<{ onSelect?: (clientId: string) => void }> = ({ onSelect }) => {
+const ClientSearch: React.FC<{ onSelect?: (clientId: string) => void, targetPath?: string }> = ({ onSelect, targetPath = '/portfolio' }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(false);
@@ -36,7 +36,7 @@ const ClientSearch: React.FC<{ onSelect?: (clientId: string) => void }> = ({ onS
         if (onSelect) {
             onSelect(clientId);
         } else {
-            navigate(`/portfolio/${clientId}`);
+            navigate(`${targetPath}/${clientId}`);
         }
     };
 
