@@ -1,3 +1,15 @@
+"""
+[Start Guide]
+This script is the PRODUCER.
+Use this script to EXPORT the current database state into a portable python script (`seed_data.py`).
+
+Workflow:
+1. You manually create/edit data in the running application (or clean up data via SQL).
+2. You run this script: `python backend/generate_seed.py`
+3. It overwrites `backend/seed_data.py` with the new snapshot.
+4. Future deployments will use that snapshot to initialize.
+"""
+
 import mysql.connector
 import datetime
 from decimal import Decimal
