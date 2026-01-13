@@ -191,7 +191,9 @@
  ### 4.1 获取客户列表
  *   **Method**: `GET`
  *   **URL**: `/api/clients`
- *   **描述**: 获取所有客户列表。包含客户基础信息及计算出的总资产规模 (Total AUM)。
+ *   **描述**: 获取所有客户列表。支持通过关键词搜索（匹配姓名、电话或 ID）。
+ *   **参数**:
+     *   `keyword` (Query, Optional): 搜索关键词。
  *   **响应**: `List[ClientResponse]`
     ```json
      [

@@ -50,6 +50,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import ClientListPage from './ClientListPage';
+import ClientSearch from './components/ClientSearch';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, PieChart, Pie, AreaChart, Area, ComposedChart, ReferenceLine } from 'recharts';
 import { MOCK_FUNDS, MOCK_PORTFOLIO, generateChartData, generateFundHistory, getLiquidityTier, getSettlementDays, calculateAvailabilityDate } from './services/dataService';
 import { analyzeFunds } from './services/geminiService';
@@ -1450,32 +1451,15 @@ const App: React.FC = () => {
   // and then replace it to avoid breaking types or UI flickering, 
   // or better: start with null and show loading.
   // Given user request "Replace mock with real", I will fetch on mount.
+  // Initialize with null, no default fetch
   const [portfolio, setPortfolio] = useState<ClientPortfolio | null>(null);
-  const [loadingPortfolio, setLoadingPortfolio] = useState(true);
+  const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
   const [editingRuleContext, setEditingRuleContext] = useState<{ accId: string, hIdx: number, hName: string, rule?: RedemptionRule, fundId?: string } | null>(null);
   const [fundRefreshTrigger, setFundRefreshTrigger] = useState(0);
   const [portfolioRefreshTrigger, setPortfolioRefreshTrigger] = useState(0);
 
-  useEffect(() => {
-    const fetchPortfolio = async () => {
-      try {
-        // Client ID is hardcoded for now as per plan
-        const res = await fetch('/api/portfolios/client-001');
-        if (res.ok) {
-          const data = await res.json();
-          setPortfolio(data);
-        } else {
-          console.error("Failed to load portfolio");
-        }
-      } catch (e) {
-        console.error("Error loading portfolio", e);
-      } finally {
-        setLoadingPortfolio(false);
-      }
-    };
-    fetchPortfolio();
-  }, [portfolioRefreshTrigger]);
+  // Removed hardcoded fetchPortfolio for client-001
 
   // Fetch Funds (Global Data)
   useEffect(() => {
@@ -1726,21 +1710,19 @@ const App: React.FC = () => {
                   <span className="mt-2 text-sm">正在加载数据资源...</span>
                 </div>
               </div>
-            ) : ((!portfolio) ? (
-              <div className="text-center text-red-500 p-8">无法加载客户持仓数据</div>
             ) : (
               <Routes>
                 <Route path="/" element={<FundListPage />} />
                 <Route path="/fund/:id" element={<FundDetailPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} refreshTrigger={fundRefreshTrigger} onEditLiquidity={(name, rule, fundId) => { setEditingRuleContext({ accId: 'FUND_UPDATE', hIdx: -1, hName: name, rule, fundId }); setRuleModalOpen(true); }} />} />
                 <Route path="/comparison" element={<ComparisonPage patchRules={patchRules} onAddPatchRule={handleAddPatchRule} onRemovePatchRule={handleRemovePatchRule} />} />
-                <Route path="/portfolio" element={<PortfolioPage portfolio={portfolio!} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} onRefresh={() => setPortfolioRefreshTrigger(p => p + 1)} />} />
+                <Route path="/portfolio" element={<ClientSearch />} />
                 <Route path="/portfolio/:clientId" element={<PortfolioLoader currentPortfolio={portfolio} setPortfolio={setPortfolio} patchRules={patchRules} onAddExternalAsset={handleAddExternalAsset} />} />
                 <Route path="/liquidity" element={<LiquidityPage portfolio={portfolio} funds={funds} updateHoldingRule={handleUpdateHoldingRule} updateAccountCash={handleUpdateAccountCash} />} />
                 <Route path="/liquidity/long-term" element={<LongTermForecastPage portfolio={portfolio} funds={funds} />} />
                 <Route path="/clients" element={<ClientListPage />} />
                 <Route path="/proposal" element={<ProposalGenerator />} />
               </Routes>
-            ))}
+            )}
           </div>
         </main>
         <LiquidityRuleModal isOpen={ruleModalOpen} onClose={() => setRuleModalOpen(false)} holdingName={editingRuleContext?.hName || ''} currentRule={editingRuleContext?.rule} onSave={handleSaveRule} />

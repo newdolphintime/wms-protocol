@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
 from typing import List, Optional, Dict, Any
@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from datetime import date
 import os
 import json
+import time
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -44,6 +45,78 @@ logger = logging.getLogger("wms_backend")
 logger.info(f"Logging initialized. Logs writing to: {log_file_path}")
 
 app = FastAPI()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    # Capture Request Body
+    body_str = ""
+    try:
+        # Only try to read body for methods that usually have one
+        if request.method in ["POST", "PUT", "PATCH"]:
+            body_bytes = await request.body()
+            # Restore request body for downstream handlers
+            async def receive():
+                return {"type": "http.request", "body": body_bytes}
+            request._receive = receive
+            
+            if body_bytes:
+                try:
+                    body_str = body_bytes.decode('utf-8')
+                    # Try to pretty print JSON if possible, or just log query params
+                    body_json = json.loads(body_str)
+                    body_str = json.dumps(body_json, ensure_ascii=False)
+                except:
+                    pass # Keep raw string if not JSON
+    except Exception as e:
+        body_str = f"[Error reading body: {str(e)}]"
+
+    # Prepare Request Log
+    log_msg = f"Incoming: {request.method} {request.url}"
+    if body_str:
+        log_msg += f" | Body: {body_str}"
+    
+    # Log Request
+    logger.info(log_msg)
+
+    # Process Request
+    response = await call_next(request)
+    
+    # Capture Response Body
+    resp_body = ""
+    try:
+        # Consuming the iterator to read body
+        resp_body_bytes = b""
+        async for chunk in response.body_iterator:
+            resp_body_bytes += chunk
+        
+        # Re-create iterator for the actual response
+        async def new_iterator():
+             yield resp_body_bytes
+        response.body_iterator = new_iterator()
+
+        if resp_body_bytes:
+             try:
+                 resp_str = resp_body_bytes.decode('utf-8')
+                 # Try to parse JSON for cleaner logging
+                 resp_json = json.loads(resp_str)
+                 # Truncate if too long (e.g., > 1000 chars)
+                 resp_dump = json.dumps(resp_json, ensure_ascii=False)
+                 if len(resp_dump) > 1000:
+                     resp_body = resp_dump[:1000] + "...(truncated)"
+                 else:
+                     resp_body = resp_dump
+             except:
+                 resp_body = "[Binary/Non-JSON Content]"
+    except Exception as e:
+        resp_body = f"[Error reading response: {str(e)}]"
+
+    # Log Response
+    process_time = time.time() - start_time
+    logger.info(f"Outgoing: Status {response.status_code} | Time: {process_time:.3f}s | Response: {resp_body}")
+    
+    return response
 
 @app.on_event("startup")
 def startup_db_migration():
@@ -285,12 +358,21 @@ def get_db_connection():
         raise HTTPException(status_code=500, detail="Database connection failed")
 
 @app.get("/api/clients", response_model=List[ClientResponse])
-def get_clients():
+def get_clients(keyword: Optional[str] = Query(None)):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         # Fetch basic client info
-        cursor.execute("SELECT * FROM clients ORDER BY created_at DESC")
+        query = "SELECT * FROM clients"
+        params = []
+        if keyword:
+            query += " WHERE name LIKE %s OR phone LIKE %s OR id LIKE %s"
+            search_term = f"%{keyword}%"
+            params = [search_term, search_term, search_term]
+        
+        query += " ORDER BY created_at DESC"
+        
+        cursor.execute(query, tuple(params))
         clients_db = cursor.fetchall()
         
         results = []

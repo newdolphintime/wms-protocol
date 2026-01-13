@@ -24,9 +24,10 @@ export interface Client {
     managerId?: string; // Advisor ID
 }
 
-export const getClients = async (): Promise<Client[]> => {
+export const getClients = async (keyword?: string): Promise<Client[]> => {
     try {
-        const response = await fetch('/api/clients');
+        const url = keyword ? `/api/clients?keyword=${encodeURIComponent(keyword)}` : '/api/clients';
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error('Failed to fetch clients');
         }
