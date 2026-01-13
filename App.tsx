@@ -815,7 +815,8 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
   const [cashFlows, setCashFlows] = useState<CashFlow[]>([]);
   // Fetch initial cash flows
   useEffect(() => {
-    fetch('/api/cash-flows')
+    if (!portfolio?.id) return;
+    fetch(`/api/cash-flows?client_id=${portfolio.id}`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch');
         return res.json();
@@ -825,7 +826,7 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
         setCashFlows(data);
       })
       .catch(err => console.error("Error loading cash flows:", err));
-  }, []);
+  }, [portfolio.id]);
 
   const [targetDate, setTargetDate] = useState<string>(''); const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL'); const [monthlyExpenses, setMonthlyExpenses] = useState<number>(50000);
   const [planCategory, setPlanCategory] = useState<'GENERIC' | 'REDEMPTION' | 'DIVIDEND' | 'INSURANCE'>('GENERIC'); const [planAmount, setPlanAmount] = useState(''); const [planShares, setPlanShares] = useState(''); const [planDate, setPlanDate] = useState(''); const [planDesc, setPlanDesc] = useState(''); const [planType, setPlanType] = useState<'INFLOW' | 'OUTFLOW'>('OUTFLOW'); const [selectedProductId, setSelectedProductId] = useState(''); const [insuranceName, setInsuranceName] = useState(''); const [validationError, setValidationError] = useState<string | null>(null);
@@ -1136,7 +1137,8 @@ const LiquidityPage: React.FC<{ portfolio: ClientPortfolio, funds: Fund[], updat
     // API Call
     const payload = {
       flows: newFlows,
-      rule: (isRecurring && ruleId) ? { id: ruleId, frequency: recurFrequency, count: recurCount } : undefined
+      rule: (isRecurring && ruleId) ? { id: ruleId, frequency: recurFrequency, count: recurCount } : undefined,
+      clientId: portfolio.id
     };
 
     fetch('/api/cash-flows/batch', {

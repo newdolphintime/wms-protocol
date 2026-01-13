@@ -1166,6 +1166,11 @@ class HoldingCreate(BaseModel):
     avgCost: float
     redemptionRule: Optional[RedemptionRule] = None
 
+class HoldingUpdate(BaseModel):
+    externalProductId: Optional[str] = None
+    purchaseDate: Optional[str] = None
+    redemptionConfig: Optional[RedemptionRule] = None
+
 @app.post("/api/holdings")
 def add_holding(holding: HoldingCreate):
     conn = get_db_connection()
@@ -1200,6 +1205,46 @@ def add_holding(holding: HoldingCreate):
         cursor.close()
         conn.close()
 
+@app.put("/api/holdings/{holding_id}")
+def update_holding(holding_id: str, updates: HoldingUpdate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        fields = []
+        values = []
+        
+        if updates.externalProductId is not None:
+            fields.append("external_product_id = %s")
+            values.append(updates.externalProductId)
+            
+        if updates.purchaseDate is not None:
+            fields.append("purchase_date = %s")
+            values.append(updates.purchaseDate)
+            
+        # Special handling: if redemptionConfig is explicitly provided (even if empty object/None in some semantic), update it.
+        # Here we only update if not None. Frontend sends null to clear?
+        if updates.redemptionConfig is not None:
+            fields.append("redemption_config = %s")
+            values.append(updates.redemptionConfig.model_dump_json())
+            
+        if not fields:
+            # If no fields provided, just return success (no-op)
+            return {"message": "No updates provided"}
+            
+        values.append(holding_id)
+        query = f"UPDATE holdings SET {', '.join(fields)} WHERE id = %s"
+        
+        cursor.execute(query, tuple(values))
+        conn.commit()
+        return {"message": "Holding updated"}
+    except mysql.connector.Error as err:
+        conn.rollback()
+        print(f"Error updating holding: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
 @app.delete("/api/holdings/{holding_id}")
 def delete_holding(holding_id: str):
     conn = get_db_connection()
@@ -1224,6 +1269,7 @@ class RecurringRuleItem(BaseModel):
     id: str
     frequency: str
     count: int
+    clientId: Optional[str] = None
 
 class CashFlowItem(BaseModel):
     id: str
@@ -1233,17 +1279,27 @@ class CashFlowItem(BaseModel):
     type: str # INFLOW / OUTFLOW
     recurringRuleId: Optional[str] = None
     relatedHoldingKey: Optional[str] = None
+    clientId: Optional[str] = None
 
 class BatchCashFlowRequest(BaseModel):
     flows: List[CashFlowItem]
     rule: Optional[RecurringRuleItem] = None
+    clientId: Optional[str] = None
 
 @app.get("/api/cash-flows", response_model=List[CashFlowItem])
-def get_cash_flows():
+def get_cash_flows(client_id: Optional[str] = Query(None)):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT * FROM cash_flows")
+        query = "SELECT * FROM cash_flows"
+        params = []
+        if client_id:
+            query += " WHERE client_id = %s"
+            params.append(client_id)
+        else:
+            return []
+            
+        cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
         results = []
         for row in rows:
@@ -1254,7 +1310,8 @@ def get_cash_flows():
                 "description": row['description'],
                 "type": row['type'],
                 "recurringRuleId": row['recurring_rule_id'],
-                "relatedHoldingKey": row['related_holding_key']
+                "relatedHoldingKey": row['related_holding_key'],
+                "clientId": row['client_id']
             })
         return results
     except mysql.connector.Error as err:
@@ -1273,14 +1330,16 @@ def add_cash_flows_batch(payload: BatchCashFlowRequest):
     try:
         # 1. Insert Rule if exists
         if payload.rule:
-            rule_query = "INSERT INTO recurring_rules (id, frequency, count) VALUES (%s, %s, %s)"
-            cursor.execute(rule_query, (payload.rule.id, payload.rule.frequency, payload.rule.count))
+            rule_query = "INSERT INTO recurring_rules (id, frequency, count, client_id) VALUES (%s, %s, %s, %s)"
+            # Use specific rule clientId if present, else fallback to payload root clientId
+            actual_client_id = payload.rule.clientId or payload.clientId
+            cursor.execute(rule_query, (payload.rule.id, payload.rule.frequency, payload.rule.count, actual_client_id))
 
         # 2. Insert Flows
         if payload.flows:
             flow_query = """
-            INSERT INTO cash_flows (id, date, amount, description, type, recurring_rule_id, related_holding_key)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO cash_flows (id, date, amount, description, type, recurring_rule_id, related_holding_key, client_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """
             flow_values = []
             for flow in payload.flows:
@@ -1291,7 +1350,8 @@ def add_cash_flows_batch(payload: BatchCashFlowRequest):
                     flow.description,
                     flow.type,
                     flow.recurringRuleId,
-                    flow.relatedHoldingKey
+                    flow.relatedHoldingKey,
+                    flow.clientId or payload.clientId
                 ))
             cursor.executemany(flow_query, flow_values)
         

@@ -47,7 +47,8 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
 
 
     useEffect(() => {
-        fetch('/api/cash-flows')
+        if (!portfolio) return;
+        fetch(`/api/cash-flows?client_id=${portfolio.id}`)
             .then(res => {
                 if (!res.ok) throw new Error('Failed to fetch');
                 return res.json();
@@ -60,7 +61,7 @@ const LongTermForecastPage: React.FC<{ portfolio: ClientPortfolio | null, funds:
                 console.error("Error loading cash flows:", err);
                 setLoading(false);
             });
-    }, []);
+    }, [portfolio]);
 
     const currentAccountHoldings = useMemo(() => {
         if (!portfolio) return [];

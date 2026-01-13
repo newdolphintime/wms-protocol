@@ -233,7 +233,8 @@
 ### 5.1 获取现金流列表
 *   **Method**: `GET`
 *   **URL**: `/api/cash-flows`
-*   **参数**: 无
+*   **参数**:
+    *   `client_id` (Query, Optional): **[Strict]** 必须指定客户ID，否则返回空列表。
 *   **响应**: `List[CashFlowItem]`
     ```json
     [
@@ -241,7 +242,6 @@
         "id": "uuid",
         "date": "2025-01-15",
         "amount": 50000,
-        "type": "INFLOW", // INFLOW or OUTFLOW
         "type": "INFLOW", // INFLOW or OUTFLOW
         "description": "分红收入",
         "recurringRuleId": "rule-uuid", // 如果关联了周期规则
@@ -267,6 +267,8 @@
       }
     }
     ```
+*   **参数说明**:
+    *   `clientId`: (Optional) **[v20260113]** 顶层客户ID。若指定，则所有 items 默认归属该客户。
 *   **响应**: `{"message": "Batch save successful", "count": 12}`
 
 ### 5.3 删除现金流

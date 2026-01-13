@@ -24,6 +24,43 @@ export interface Client {
     managerId?: string; // Advisor ID
 }
 
+export interface ClientCreate {
+    name: string;
+    phone?: string;
+    gender?: 'M' | 'F';
+    status?: ClientStatus;
+    riskLevel?: string;
+    lastContactDate?: string;
+    tags?: ClientTag[];
+}
+
+export interface ClientResponse {
+    id: string;
+    message: string;
+}
+
+export const createClient = async (client: ClientCreate): Promise<ClientResponse> => {
+    try {
+        const response = await fetch('/api/clients', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(client),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create client');
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error("Error creating client:", error);
+        throw error;
+    }
+};
+
 export const getClients = async (keyword?: string): Promise<Client[]> => {
     try {
         const url = keyword ? `/api/clients?keyword=${encodeURIComponent(keyword)}` : '/api/clients';

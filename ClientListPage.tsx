@@ -18,6 +18,7 @@ import {
     Check
 } from 'lucide-react';
 import { Client, ClientStatus, getClients, ClientTag } from './services/clientService';
+import { ClientFormModal } from './components/ClientFormModal';
 
 // --- Components ---
 
@@ -79,12 +80,18 @@ const ClientListPage: React.FC = () => {
     // Interaction State
     const [showTagInputId, setShowTagInputId] = useState<string | null>(null);
     const [newTagLabel, setNewTagLabel] = useState('');
+    const [showCreateModal, setShowCreateModal] = useState(false);
 
-    useEffect(() => {
+    const fetchClients = () => {
+        setLoading(true);
         getClients().then(data => {
             setClients(data);
             setLoading(false);
         });
+    };
+
+    useEffect(() => {
+        fetchClients();
     }, []);
 
     const filteredClients = useMemo(() => {
@@ -154,7 +161,10 @@ const ClientListPage: React.FC = () => {
                         共管理 {stats.totalClients} 位客户，总资产规模 ¥{(stats.totalAum / 100000000).toFixed(2)}亿
                     </p>
                 </div>
-                <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-indigo-700 transition-all font-medium text-sm">
+                <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-indigo-700 transition-all font-medium text-sm"
+                >
                     <Plus className="w-4 h-4" />
                     录入新客户
                 </button>
@@ -352,6 +362,15 @@ const ClientListPage: React.FC = () => {
             {showTagInputId && (
                 <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setShowTagInputId(null)}></div>
             )}
+
+            <ClientFormModal
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                onSuccess={() => {
+                    fetchClients();
+                    // Optional: Show toast success
+                }}
+            />
         </div>
     );
 };

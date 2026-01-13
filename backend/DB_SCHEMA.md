@@ -138,6 +138,7 @@
 | `type` | VARCHAR(10) | 类型 | INFLOW / OUTFLOW |
 | `recurring_rule_id` | VARCHAR(50) | 关联规则ID | 可空 |
 | `related_holding_key` | VARCHAR(100) | 关联资产Key | 用于赎回/分红关联 |
+| `client_id` | VARCHAR(36) | 所属客户 | **[v20260113]** 新增隔离字段 |
 | `created_at` | TIMESTAMP | 创建时间 | |
 
 ### 4.2 recurring_rules (重复规则)
@@ -146,3 +147,4 @@
 | `id` | VARCHAR(50) | 主键 | |
 | `frequency` | VARCHAR(20) | 频率 | MONTHLY, QUARTERLY, YEARLY |
 | `count` | INT | 总次数 | |
+| `client_id` | VARCHAR(36) | 所属客户 | **[v20260113]** 新增隔离字段 |
