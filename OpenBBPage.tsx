@@ -40,25 +40,53 @@ const OpenBBPage: React.FC = () => {
                 Market Data (OpenBB)
             </h1>
 
-            <div className="flex gap-4">
-                <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                    <input
-                        type="text"
-                        value={symbol}
-                        onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                        placeholder="Enter Stock Symbol (e.g., AAPL)"
-                        className="pl-10 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                    />
+            <div className="flex flex-col gap-4 max-w-2xl">
+                <div className="flex gap-4">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                        <input
+                            type="text"
+                            value={symbol}
+                            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                            placeholder="Enter Stock Symbol (e.g., 600519)"
+                            className="pl-10 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        />
+                    </div>
+                    <button
+                        onClick={handleSearch}
+                        disabled={loading}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+                    >
+                        {loading ? 'Loading...' : 'Search'}
+                    </button>
                 </div>
-                <button
-                    onClick={handleSearch}
-                    disabled={loading}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
-                >
-                    {loading ? 'Loading...' : 'Search'}
-                </button>
+
+                {/* Market Helper Chips */}
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <span>Suffix Helpers:</span>
+                    <button
+                        onClick={() => !symbol.endsWith('.SS') && setSymbol(s => s.replace(/\..*$/, '') + '.SS')}
+                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                    >
+                        Shanghai (.SS)
+                    </button>
+                    <button
+                        onClick={() => !symbol.endsWith('.SZ') && setSymbol(s => s.replace(/\..*$/, '') + '.SZ')}
+                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                    >
+                        Shenzhen (.SZ)
+                    </button>
+                    <button
+                        onClick={() => setSymbol(s => s.replace(/\..*$/, ''))}
+                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                    >
+                        US (No Suffix)
+                    </button>
+                    <span className="text-xs text-gray-400 ml-auto">
+                        * A-Shares require .SS (Shanghai) or .SZ (Shenzhen) suffix
+                    </span>
+                </div>
             </div>
 
             {error && (
