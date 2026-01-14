@@ -301,3 +301,29 @@
 
 ### SettlementDays (Integer)
 *   赎回指令发出后，资金回到账户所需的交易日天数 (T+N)。
+
+---
+
+## 6. 市场数据 (Market Data) [New]
+
+### 6.1 获取股票历史数据 (OpenBB)
+*   **Method**: `GET`
+*   **URL**: `/api/openbb/stock/{symbol}`
+*   **描述**: 集成 OpenBB SDK 获取指定股票或指数的历史行情数据。
+*   **参数**:
+    *   `symbol` (Path): 股票代码 (如 `AAPL`, `MSFT`)。
+    *   `days` (Query, Optional): 返回最近 N 天的数据，默认为 30。
+*   **响应**: `List[StockData]`
+    ```json
+    [
+      {
+        "date": "2024-01-14",
+        "open": 185.50,
+        "high": 186.20,
+        "low": 184.80,
+        "close": 185.92,
+        "volume": 50000000
+      }
+    ]
+    ```
+
