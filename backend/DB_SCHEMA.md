@@ -112,6 +112,7 @@
 | `risk_level` | VARCHAR(50) | 风险偏好 (e.g. C3-稳健型) |
 | `last_contact_date` | DATE | 最后联系日期 |
 | `tags` | JSON | 客户标签 ([{id, label, color}]) |
+| `canEdit` | BOOLEAN | (计算字段) 编辑权限标识 |
 
 ### 3.2 accounts (账户)
 | 字段名 | 类型 | 描述 | 备注 |

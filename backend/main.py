@@ -46,78 +46,6 @@ logger.info(f"Logging initialized. Logs writing to: {log_file_path}")
 
 app = FastAPI()
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    start_time = time.time()
-    
-    # Capture Request Body
-    body_str = ""
-    try:
-        # Only try to read body for methods that usually have one
-        if request.method in ["POST", "PUT", "PATCH"]:
-            body_bytes = await request.body()
-            # Restore request body for downstream handlers
-            async def receive():
-                return {"type": "http.request", "body": body_bytes}
-            request._receive = receive
-            
-            if body_bytes:
-                try:
-                    body_str = body_bytes.decode('utf-8')
-                    # Try to pretty print JSON if possible, or just log query params
-                    body_json = json.loads(body_str)
-                    body_str = json.dumps(body_json, ensure_ascii=False)
-                except:
-                    pass # Keep raw string if not JSON
-    except Exception as e:
-        body_str = f"[Error reading body: {str(e)}]"
-
-    # Prepare Request Log
-    log_msg = f"Incoming: {request.method} {request.url}"
-    if body_str:
-        log_msg += f" | Body: {body_str}"
-    
-    # Log Request
-    logger.info(log_msg)
-
-    # Process Request
-    response = await call_next(request)
-    
-    # Capture Response Body
-    resp_body = ""
-    try:
-        # Consuming the iterator to read body
-        resp_body_bytes = b""
-        async for chunk in response.body_iterator:
-            resp_body_bytes += chunk
-        
-        # Re-create iterator for the actual response
-        async def new_iterator():
-             yield resp_body_bytes
-        response.body_iterator = new_iterator()
-
-        if resp_body_bytes:
-             try:
-                 resp_str = resp_body_bytes.decode('utf-8')
-                 # Try to parse JSON for cleaner logging
-                 resp_json = json.loads(resp_str)
-                 # Truncate if too long (e.g., > 1000 chars)
-                 resp_dump = json.dumps(resp_json, ensure_ascii=False)
-                 if len(resp_dump) > 1000:
-                     resp_body = resp_dump[:1000] + "...(truncated)"
-                 else:
-                     resp_body = resp_dump
-             except:
-                 resp_body = "[Binary/Non-JSON Content]"
-    except Exception as e:
-        resp_body = f"[Error reading response: {str(e)}]"
-
-    # Log Response
-    process_time = time.time() - start_time
-    logger.info(f"Outgoing: Status {response.status_code} | Time: {process_time:.3f}s | Response: {resp_body}")
-    
-    return response
-
 @app.on_event("startup")
 def startup_db_migration():
     """Check and apply database schema migrations on startup"""
@@ -338,6 +266,15 @@ class ClientCreate(BaseModel):
     lastContactDate: Optional[date] = None
     tags: List[ClientTag] = []
 
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    gender: Optional[str] = None
+    status: Optional[str] = None
+    riskLevel: Optional[str] = None
+    lastContactDate: Optional[date] = None
+    tags: Optional[List[ClientTag]] = None
+
 class ClientResponse(ClientCreate):
     id: str
     totalAum: float = 0
@@ -427,7 +364,8 @@ def get_clients(keyword: Optional[str] = Query(None)):
                 "riskLevel": c['risk_level'] or 'C1-保守型',
                 "lastContactDate": c['last_contact_date'],
                 "tags": tags,
-                "totalAum": total_aum
+                "totalAum": total_aum,
+                "canEdit": True  # Future: Add permission logic here
             })
             
         return results
@@ -463,6 +401,60 @@ def create_client(client: ClientCreate):
         ))
         conn.commit()
         return {"id": new_id, "message": "Client created successfully"}
+    except mysql.connector.Error as err:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(err))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.put("/api/clients/{client_id}", response_model=Dict[str, str])
+def update_client(client_id: str, update: ClientUpdate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        fields = []
+        values = []
+        
+        if update.name is not None:
+            fields.append("name = %s")
+            values.append(update.name)
+        if update.phone is not None:
+            fields.append("phone = %s")
+            values.append(update.phone)
+        if update.gender is not None:
+            fields.append("gender = %s")
+            values.append(update.gender)
+        if update.status is not None:
+            fields.append("status = %s")
+            values.append(update.status)
+        if update.riskLevel is not None:
+            fields.append("risk_level = %s")
+            values.append(update.riskLevel)
+        if update.lastContactDate is not None:
+            fields.append("last_contact_date = %s")
+            values.append(update.lastContactDate)
+        if update.tags is not None:
+            fields.append("tags = %s")
+            values.append(json.dumps([t.dict() for t in update.tags]))
+            
+        if not fields:
+            return {"message": "No changes provided"}
+            
+        values.append(client_id)
+        query = f"UPDATE clients SET {', '.join(fields)} WHERE id = %s"
+        
+        cursor.execute(query, tuple(values))
+        
+        if cursor.rowcount == 0:
+            # Check if client exists
+            cursor.execute("SELECT id FROM clients WHERE id = %s", (client_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Client not found")
+            return {"message": "No changes made"}
+            
+        conn.commit()
+        return {"message": "Client updated successfully"}
     except mysql.connector.Error as err:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(err))

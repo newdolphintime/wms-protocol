@@ -15,7 +15,8 @@ import {
     Clock,
     ChevronDown,
     X,
-    Check
+    Check,
+    Edit
 } from 'lucide-react';
 import { Client, ClientStatus, getClients, ClientTag } from './services/clientService';
 import { ClientFormModal } from './components/ClientFormModal';
@@ -81,6 +82,7 @@ const ClientListPage: React.FC = () => {
     const [showTagInputId, setShowTagInputId] = useState<string | null>(null);
     const [newTagLabel, setNewTagLabel] = useState('');
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [editingClient, setEditingClient] = useState<Client | null>(null);
 
     const fetchClients = () => {
         setLoading(true);
@@ -332,6 +334,15 @@ const ClientListPage: React.FC = () => {
                                 {/* Actions */}
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                        {client.canEdit !== false && (
+                                            <button
+                                                onClick={() => setEditingClient(client)}
+                                                className="p-2 hover:bg-indigo-50 text-indigo-600 rounded-full transition-colors"
+                                                title="编辑客户"
+                                            >
+                                                <Edit className="w-4 h-4" />
+                                            </button>
+                                        )}
                                         <button className="p-2 hover:bg-indigo-50 text-indigo-600 rounded-full transition-colors" title="发消息">
                                             <MessageSquare className="w-4 h-4" />
                                         </button>
@@ -364,8 +375,12 @@ const ClientListPage: React.FC = () => {
             )}
 
             <ClientFormModal
-                isOpen={showCreateModal}
-                onClose={() => setShowCreateModal(false)}
+                isOpen={showCreateModal || !!editingClient}
+                initialData={editingClient}
+                onClose={() => {
+                    setShowCreateModal(false);
+                    setEditingClient(null);
+                }}
                 onSuccess={() => {
                     fetchClients();
                     // Optional: Show toast success

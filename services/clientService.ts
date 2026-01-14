@@ -22,6 +22,7 @@ export interface Client {
     lastContactDate: string; // YYYY-MM-DD
     notes?: string;
     managerId?: string; // Advisor ID
+    canEdit?: boolean;
 }
 
 export interface ClientCreate {
@@ -72,5 +73,27 @@ export const getClients = async (keyword?: string): Promise<Client[]> => {
     } catch (error) {
         console.error("Error fetching clients:", error);
         return [];
+    }
+};
+
+export const updateClient = async (id: string, client: Partial<ClientCreate>): Promise<ClientResponse> => {
+    try {
+        const response = await fetch(`/api/clients/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(client),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update client');
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error("Error updating client:", error);
+        throw error;
     }
 };

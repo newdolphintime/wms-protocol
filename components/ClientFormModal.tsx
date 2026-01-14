@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { X, Loader2, User, Phone, Tag } from 'lucide-react';
-import { createClient, ClientCreate, ClientStatus } from '../services/clientService';
+import { createClient, updateClient, Client, ClientCreate, ClientStatus } from '../services/clientService';
 
 interface ClientFormModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSuccess: (newClient: any) => void;
+    onSuccess: (client: any) => void;
+    initialData?: Client | null;
 }
 
-export const ClientFormModal: React.FC<ClientFormModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const ClientFormModal: React.FC<ClientFormModalProps> = ({ isOpen, onClose, onSuccess, initialData }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -21,6 +22,30 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({ isOpen, onClos
         lastContactDate: new Date().toISOString().split('T')[0],
         tags: []
     });
+
+    React.useEffect(() => {
+        if (isOpen && initialData) {
+            setFormData({
+                name: initialData.name,
+                phone: initialData.phone,
+                gender: initialData.gender,
+                status: initialData.status,
+                riskLevel: initialData.riskLevel,
+                lastContactDate: initialData.lastContactDate || new Date().toISOString().split('T')[0],
+                tags: initialData.tags || []
+            });
+        } else if (isOpen) {
+            setFormData({
+                name: '',
+                phone: '',
+                gender: 'M',
+                status: 'POTENTIAL',
+                riskLevel: 'C1-保守型',
+                lastContactDate: new Date().toISOString().split('T')[0],
+                tags: []
+            });
+        }
+    }, [isOpen, initialData]);
 
     const [tagInput, setTagInput] = useState('');
 
@@ -43,7 +68,13 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({ isOpen, onClos
             }
 
             const payload = { ...formData, tags: finalTags };
-            await createClient(payload);
+
+            if (initialData?.id) {
+                await updateClient(initialData.id, payload);
+            } else {
+                await createClient(payload);
+            }
+
             onSuccess(payload);
             setFormData({
                 name: '',
@@ -56,7 +87,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({ isOpen, onClos
             });
             onClose();
         } catch (err: any) {
-            setError(err.message || '创建客户失败');
+            setError(err.message || (initialData ? '更新客户失败' : '创建客户失败'));
         } finally {
             setLoading(false);
         }
@@ -83,7 +114,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({ isOpen, onClos
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                    <h3 className="text-lg font-bold text-gray-900">录入新客户</h3>
+                    <h3 className="text-lg font-bold text-gray-900">{initialData ? '编辑客户信息' : '录入新客户'}</h3>
                     <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-200 text-gray-500 transition-colors">
                         <X className="w-5 h-5" />
                     </button>
