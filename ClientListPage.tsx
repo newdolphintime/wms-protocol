@@ -18,7 +18,7 @@ import {
     Check,
     Edit
 } from 'lucide-react';
-import { Client, ClientStatus, getClients, ClientTag } from './services/clientService';
+import { Client, ClientStatus, getClients, ClientTag, updateClient } from './services/clientService';
 import { ClientFormModal } from './components/ClientFormModal';
 
 // --- Components ---
@@ -111,8 +111,12 @@ const ClientListPage: React.FC = () => {
         return { totalClients: clients.length, totalAum, vipCount };
     }, [clients]);
 
-    const handleAddTag = (clientId: string) => {
+    const handleAddTag = async (clientId: string) => {
         if (!newTagLabel.trim()) return;
+
+        const client = clients.find(c => c.id === clientId);
+        if (!client) return;
+
         const colors: ClientTag['color'][] = ['blue', 'green', 'purple', 'pink', 'indigo', 'yellow'];
         const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
@@ -122,24 +126,44 @@ const ClientListPage: React.FC = () => {
             color: randomColor
         };
 
-        setClients(prev => prev.map(c => {
-            if (c.id === clientId) {
-                return { ...c, tags: [...c.tags, newTag] };
-            }
-            return c;
-        }));
-        setNewTagLabel('');
-        setShowTagInputId(null);
+        const updatedTags = [...client.tags, newTag];
+
+        try {
+            await updateClient(clientId, { tags: updatedTags });
+            setClients(prev => prev.map(c => {
+                if (c.id === clientId) {
+                    return { ...c, tags: updatedTags };
+                }
+                return c;
+            }));
+            setNewTagLabel('');
+            setShowTagInputId(null);
+        } catch (error) {
+            console.error("Failed to add tag:", error);
+            alert('添加标签失败，请稍后重试');
+        }
     };
 
-    const handleRemoveTag = (clientId: string, tagId: string) => {
+    const handleRemoveTag = async (clientId: string, tagId: string) => {
         if (!window.confirm('确认移除该标签?')) return;
-        setClients(prev => prev.map(c => {
-            if (c.id === clientId) {
-                return { ...c, tags: c.tags.filter(t => t.id !== tagId) };
-            }
-            return c;
-        }));
+
+        const client = clients.find(c => c.id === clientId);
+        if (!client) return;
+
+        const updatedTags = client.tags.filter(t => t.id !== tagId);
+
+        try {
+            await updateClient(clientId, { tags: updatedTags });
+            setClients(prev => prev.map(c => {
+                if (c.id === clientId) {
+                    return { ...c, tags: updatedTags };
+                }
+                return c;
+            }));
+        } catch (error) {
+            console.error("Failed to remove tag:", error);
+            alert('移除标签失败，请稍后重试');
+        }
     }
 
     if (loading) {
