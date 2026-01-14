@@ -14,7 +14,8 @@ Python 后端 (`backend/main.py`) 已被修改为可以直接运行 React 前端
 # 1. 安装依赖
 npm install
 
-# 2. 构建前端 (生成 dist 目录)
+# 2. 清理旧构建并重新构建
+rm -rf dist
 npm run build
 ```
 **验证**: 运行 `ls -F`，确保可以看见 `dist/` 目录。如果缺少该目录，后续访问会报 404。
