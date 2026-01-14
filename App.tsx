@@ -59,6 +59,7 @@ import ProposalGenerator from './components/ProposalGenerator';
 import { Fund, AnalysisState, FundType, PatchRule, Account, AccountType, LiquidityTier, CashFlow, ClientPortfolio, Holding, RedemptionRule, Frequency, ExternalProduct } from './types';
 import ReactMarkdown from 'react-markdown';
 import LongTermForecastPage from './LongTermForecastPage';
+import OpenBBPage from './OpenBBPage';
 
 // --- Shared Components ---
 
@@ -1678,6 +1679,7 @@ const App: React.FC = () => {
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2 mt-2">市场与发现</div>
             <NavLink to="/" icon={<ListIcon className="w-5 h-5" />} label="基金列表" />
             <NavLink to="/comparison" icon={<BarChart2 className="w-5 h-5" />} label="业绩对比" />
+            <NavLink to="/openbb" icon={<TrendingUp className="w-5 h-5" />} label="市场行情" />
 
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2 mt-6">客户账户</div>
             <NavLink to="/clients" icon={<Users className="w-5 h-5" />} label="客户列表" />
@@ -1730,6 +1732,7 @@ const App: React.FC = () => {
                 } />
                 <Route path="/liquidity/long-term" element={<LongTermForecastPage portfolio={portfolio} funds={funds} />} />
                 <Route path="/clients" element={<ClientListPage />} />
+                <Route path="/openbb" element={<OpenBBPage />} />
                 <Route path="/proposal" element={<ProposalGenerator />} />
               </Routes>
             )}

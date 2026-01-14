@@ -1605,6 +1605,21 @@ def update_holding(holding_id: str, update: HoldingUpdate):
 
 
 
+
+# --- OpenBB Integration ---
+from openbb_service import OpenBBService
+
+@app.get("/api/openbb/stock/{symbol}")
+def get_stock_history(symbol: str, days: int = 30):
+    """
+    Get historical stock data using OpenBB.
+    """
+    try:
+        data = OpenBBService.get_historical_data(symbol, days)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- Static File Serving ---
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
